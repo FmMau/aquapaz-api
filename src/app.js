@@ -10,6 +10,6 @@ app.use(express.json());
 
 app.use('/reportes', reportesRoutes);
 
-app.listen(3000, () => {
+app.listen(3000, '0.0.0.0', () => {
   console.log('Servidor corriendo en puerto 3000');
 });
