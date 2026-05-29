@@ -23,6 +23,8 @@ app.use('/api/auth', authRoutes);
 
 app.use('/notificaciones', notificacionesRoutes);
 
+app.get('/', (req, res) => { res.json({ message: 'AquaPaz API funcionando' }); });
+
 const PORT =
   process.env.PORT || 3000;
 
