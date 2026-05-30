@@ -1,5 +1,6 @@
-const express = require('express');
+require('dotenv').config();
 
+const express = require('express');
 const cors = require('cors');
 
 const app = express();
@@ -15,6 +16,11 @@ app.get('/', (req, res) => {
   });
 
 });
+
+
+console.log('JWT:', process.env.JWT_SECRET);
+console.log('DATABASE:', process.env.DATABASE_URL);
+
 
 const PORT =
   process.env.PORT || 3000;
