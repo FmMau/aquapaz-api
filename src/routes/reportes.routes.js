@@ -79,4 +79,68 @@ router.post('/', async (req, res) => {
   }
 });
 
+
+// GET reportes por colonia (para ConfirmScreen)
+router.get('/colonia/:colonia', async (req, res) => {
+  try {
+    const { colonia } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM reportes
+       WHERE colonia = $1 AND tipo = 'agua' AND estado = 'no_agua'
+       ORDER BY fecha DESC LIMIT 20`,
+      [colonia]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: 'Error obteniendo reportes' });
+  }
+});
+
+// POST confirmar reporte con consenso en servidor
+router.post('/:id/confirmar', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision, usuario_id } = req.body;
+
+    // Guardar confirmación
+    await pool.query(
+      `INSERT INTO confirmaciones (reporte_id, decision, usuario_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [id, decision, usuario_id ?? null]
+    );
+
+    // Contar confirmaciones positivas en servidor
+    const result = await pool.query(
+      `SELECT COUNT(*) as total FROM confirmaciones
+       WHERE reporte_id = $1 AND decision = 'confirmar'`,
+      [id]
+    );
+
+    const total = parseInt(result.rows[0].total);
+    const consenso = total >= 3;
+
+    if (consenso) {
+      // Notificar a toda la colonia
+      const reporte = await pool.query(
+        'SELECT * FROM reportes WHERE id = $1', [id]
+      );
+      if (reporte.rows[0]) {
+        await enviarPushAColonia(
+          reporte.rows[0].colonia,
+          -1, // notificar a todos
+          'Reporte validado por la comunidad',
+          `${total} vecinos confirmaron falta de agua en ${reporte.rows[0].colonia}`
+        );
+      }
+    }
+
+    res.json({ success: true, confirmaciones: total, consenso });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ error: 'Error confirmando reporte' });
+  }
+});
+
 module.exports = router;
