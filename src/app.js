@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
+
 const cors = require('cors');
 
 const app = express();
@@ -11,16 +12,16 @@ app.use(express.json());
 
 app.get('/', (req, res) => {
 
-  res.json({
-    message: 'AquaPaz API funcionando'
+  return res.status(200).json({
+
+    success: true,
+
+    message:
+      'AquaPaz API funcionando'
+
   });
 
 });
-
-
-console.log('JWT:', process.env.JWT_SECRET);
-console.log('DATABASE:', process.env.DATABASE_URL);
-
 
 const PORT =
   process.env.PORT || 3000;
