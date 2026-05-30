@@ -2,28 +2,19 @@ const express = require('express');
 
 const cors = require('cors');
 
-const reportesRoutes =
-require('./routes/reportes.routes');
-
-const authRoutes =
-require('./routes/auth.routes');
-
-const notificacionesRoutes =
-require('./routes/notificaciones.routes');
-
 const app = express();
 
 app.use(cors());
 
 app.use(express.json());
 
-app.use('/reportes', reportesRoutes);
+app.get('/', (req, res) => {
 
-app.use('/api/auth', authRoutes);
+  res.json({
+    message: 'AquaPaz API funcionando'
+  });
 
-app.use('/notificaciones', notificacionesRoutes);
-
-app.get('/', (req, res) => { res.json({ message: 'AquaPaz API funcionando' }); });
+});
 
 const PORT =
   process.env.PORT || 3000;
