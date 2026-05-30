@@ -186,10 +186,14 @@ router.post('/login', async (
 
   } catch (error) {
 
-    console.log(error);
+    console.log(
+      'REGISTER ERROR:',
+      error
+    );
+
 
     res.status(500).json({
-      error: 'Error login'
+      error: 'Error registrando usuario'
     });
 
   }
