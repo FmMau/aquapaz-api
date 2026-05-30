@@ -1,5 +1,8 @@
 {
   "name": "aquapaz-api",
+    "engines": {
+    "node": "20.x"
+  },
   "version": "1.0.0",
   "description": "",
   "main": "src/app.js",
