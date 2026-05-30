@@ -35,20 +35,10 @@ const server = app.listen(
   }
 );
 
-// MANTENER PROCESO VIVO
-setInterval(() => {
-
-  console.log('Servidor activo');
-
-}, 30000);
 
 process.on('uncaughtException', (err) => {
-
-  console.error(
-    'UNCAUGHT EXCEPTION:',
-    err
-  );
-
+  console.error('UNCAUGHT EXCEPTION:', err);
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (err) => {
@@ -58,4 +48,11 @@ process.on('unhandledRejection', (err) => {
     err
   );
 
+});
+
+process.on('SIGTERM', () => {
+  server.close(() => {
+    console.log('Servidor cerrado correctamente');
+    process.exit(0);
+  });
 });
