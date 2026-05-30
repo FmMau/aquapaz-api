@@ -8,6 +8,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Routes
+const authRoutes = require('./routes/auth.routes');
+const notificacionesRoutes = require('./routes/notificaciones.routes');
+const reportesRoutes = require('./routes/reportes.routes');
+
+app.use('/auth', authRoutes);
+app.use('/notificaciones', notificacionesRoutes);
+app.use('/reportes', reportesRoutes);
+
 app.get('/', (req, res) => {
 
   return res.status(200).json({
