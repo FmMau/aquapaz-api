@@ -5,12 +5,21 @@ const jwt = require('jsonwebtoken');
 const pool = require('../database/db');
 const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
+const normalizePushToken = (token) => {
+  if (typeof token !== 'string') return null;
+
+  const trimmedToken = token.trim();
+  if (!trimmedToken) return null;
+
+  return trimmedToken;
+};
+
 // REGISTER
 router.post('/register', async (req, res) => {
   try {
     console.log('auth.routes /register body:', req.body);
     const { nombre, email, telefono, password, colonia, push_token, pushToken } = req.body;
-    const pushTokenToSave = push_token ?? pushToken ?? null;
+    const pushTokenToSave = normalizePushToken(push_token ?? pushToken);
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
@@ -74,11 +83,16 @@ const authMiddleware = require('../middlewares/auth.middleware');
 router.post('/push-token', authMiddleware, async (req, res) => {
   try {
     const pushToken = req.body.token ?? req.body.push_token ?? req.body.pushToken ?? null;
-    console.log('auth.routes /push-token user:', req.user.id, 'body:', req.body, 'resolvedToken:', pushToken);
+    const pushTokenToSave = normalizePushToken(pushToken);
+    console.log('auth.routes /push-token user:', req.user.id, 'body:', req.body, 'resolvedToken:', pushTokenToSave);
+
+    if (!pushTokenToSave) {
+      return res.status(400).json({ error: 'Push token invalido' });
+    }
 
     await pool.query(
       'UPDATE usuarios SET push_token = $1 WHERE id = $2',
-      [pushToken, req.user.id]
+      [pushTokenToSave, req.user.id]
     );
 
     res.json({ success: true });
