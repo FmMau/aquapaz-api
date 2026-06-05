@@ -7,15 +7,33 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const enviarPushAColonia = async (colonia, usuarioIdExcluir, titulo, mensaje, reporte_id = null) => {
   try {
     const result = await pool.query(
-      `SELECT push_token FROM usuarios
+      `SELECT id, email, colonia, push_token FROM usuarios
        WHERE colonia = $1 AND id != $2 AND push_token IS NOT NULL`,
       [colonia, usuarioIdExcluir]
     );
 
-    const tokens = result.rows.map((r) => r.push_token);
-    if (tokens.length === 0) return;
+    const tokens = result.rows
+      .map((r) => r.push_token)
+      .filter((token) => typeof token === 'string' && token.startsWith('ExponentPushToken['));
 
-    await fetch(EXPO_PUSH_URL, {
+    console.log('enviarPushAColonia:', {
+      colonia,
+      usuarioIdExcluir,
+      candidatos: result.rows.map((usuario) => ({
+        id: usuario.id,
+        email: usuario.email,
+        colonia: usuario.colonia,
+        tienePushToken: Boolean(usuario.push_token),
+      })),
+      totalTokens: tokens.length,
+      reporte_id,
+    });
+
+    if (tokens.length === 0) {
+      return { sent: false, totalTokens: 0, expoResult: null };
+    }
+
+    const expoResponse = await fetch(EXPO_PUSH_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
@@ -28,8 +46,13 @@ const enviarPushAColonia = async (colonia, usuarioIdExcluir, titulo, mensaje, re
         }))
       ),
     });
+
+    const expoResult = await expoResponse.json();
+    console.log('Expo push response:', expoResult);
+    return { sent: true, totalTokens: tokens.length, expoResult };
   } catch (error) {
     console.log('Error enviando push:', error);
+    return { sent: false, totalTokens: 0, error: error.message };
   }
 };
 
@@ -80,7 +103,7 @@ router.post('/', async (req, res) => {
       tengo_agua: 'con agua normal',
     }[estado] ?? estado;
 
-    await enviarPushAColonia(
+    const push = await enviarPushAColonia(
       colonia,
       usuario_id ?? -1,
       `Reporte en ${colonia}`,
@@ -88,7 +111,7 @@ router.post('/', async (req, res) => {
       reporte.id
     );
 
-    res.json(reporte);
+    res.json({ ...reporte, push });
   } catch (error) {
     console.log(error);
     res.status(500).json({ error: 'Error al crear reporte' });
