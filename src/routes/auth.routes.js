@@ -3,24 +3,25 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../database/db');
+const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 // REGISTER
 router.post('/register', async (req, res) => {
   try {
-    const { nombre, email, telefono, password, colonia } = req.body;
+    const { nombre, email, telefono, password, colonia, push_token } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
-      `INSERT INTO usuarios (nombre, email, telefono, password, colonia)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, nombre, email, colonia`,
-      [nombre, email, telefono, hashedPassword, colonia]
+      `INSERT INTO usuarios (nombre, email, telefono, password, colonia, push_token)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id, nombre, email, colonia, push_token`,
+      [nombre, email, telefono, hashedPassword, colonia, push_token ?? null]
     );
 
     const token = jwt.sign(
       { id: result.rows[0].id, email },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: TOKEN_EXPIRES_IN }
     );
 
     res.json({ user: result.rows[0], token });
@@ -52,7 +53,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: TOKEN_EXPIRES_IN }
     );
 
     res.json({
@@ -65,18 +66,14 @@ router.post('/login', async (req, res) => {
   }
 });
 
+const authMiddleware = require('../middlewares/auth.middleware');
+
 // GUARDAR PUSH TOKEN
-router.post('/push-token', async (req, res) => {
+router.post('/push-token', authMiddleware, async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'Sin token' });
-
-    const token = authHeader.replace('Bearer ', '');
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     await pool.query(
       'UPDATE usuarios SET push_token = $1 WHERE id = $2',
-      [req.body.token, decoded.id]
+      [req.body.token, req.user.id]
     );
 
     res.json({ success: true });
