@@ -8,14 +8,15 @@ const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 // REGISTER
 router.post('/register', async (req, res) => {
   try {
-    const { nombre, email, telefono, password, colonia, push_token } = req.body;
+    const { nombre, email, telefono, password, colonia, push_token, pushToken } = req.body;
+    const pushTokenToSave = push_token ?? pushToken ?? null;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
       `INSERT INTO usuarios (nombre, email, telefono, password, colonia, push_token)
        VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING id, nombre, email, colonia, push_token`,
-      [nombre, email, telefono, hashedPassword, colonia, push_token ?? null]
+      [nombre, email, telefono, hashedPassword, colonia, pushTokenToSave]
     );
 
     const token = jwt.sign(
@@ -71,9 +72,11 @@ const authMiddleware = require('../middlewares/auth.middleware');
 // GUARDAR PUSH TOKEN
 router.post('/push-token', authMiddleware, async (req, res) => {
   try {
+    const pushToken = req.body.token ?? req.body.push_token ?? req.body.pushToken ?? null;
+
     await pool.query(
       'UPDATE usuarios SET push_token = $1 WHERE id = $2',
-      [req.body.token, req.user.id]
+      [pushToken, req.user.id]
     );
 
     res.json({ success: true });
