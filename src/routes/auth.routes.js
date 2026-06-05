@@ -8,6 +8,7 @@ const TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 // REGISTER
 router.post('/register', async (req, res) => {
   try {
+    console.log('auth.routes /register body:', req.body);
     const { nombre, email, telefono, password, colonia, push_token, pushToken } = req.body;
     const pushTokenToSave = push_token ?? pushToken ?? null;
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -73,6 +74,7 @@ const authMiddleware = require('../middlewares/auth.middleware');
 router.post('/push-token', authMiddleware, async (req, res) => {
   try {
     const pushToken = req.body.token ?? req.body.push_token ?? req.body.pushToken ?? null;
+    console.log('auth.routes /push-token user:', req.user.id, 'body:', req.body, 'resolvedToken:', pushToken);
 
     await pool.query(
       'UPDATE usuarios SET push_token = $1 WHERE id = $2',
