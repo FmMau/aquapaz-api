@@ -4,9 +4,9 @@ const pool = require('../database/db');
 module.exports = async function (req, res, next) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'Sin token' });
+    if (typeof authHeader !== 'string' || !/^Bearer \S+$/i.test(authHeader)) return res.status(401).json({ error: 'Sin token válido' });
 
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const result = await pool.query(
@@ -19,7 +19,10 @@ module.exports = async function (req, res, next) {
     req.user = result.rows[0];
     next();
   } catch (error) {
-    console.log('auth.middleware error:', error);
-    return res.status(401).json({ error: 'Token inválido o expirado' });
+    if (['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name)) {
+      return res.status(401).json({ error: 'Token inválido o expirado' });
+    }
+    console.error('Authentication failed:', error.code || error.name);
+    return res.status(503).json({ error: 'Autenticación no disponible' });
   }
 };

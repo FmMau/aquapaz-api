@@ -1,238 +1,34 @@
-const express = require('express');
-
-const router = express.Router();
-
-const pool =
-  require('../database/db');
-
-
-// OBTENER NOTIFICACIONES
-
-router.get('/', async (
-  req,
-  res
-) => {
-
+const router = require('express').Router();
+const pool = require('../database/db');
+router.use(require('../middlewares/auth.middleware'));
+router.get('/', async (req, res) => {
   try {
-
-    const result =
-      await pool.query(
-
-        `
-        SELECT *
-        FROM notificaciones
-        ORDER BY fecha DESC
-        `
-
-      );
-
+    const result = await pool.query('SELECT * FROM notificaciones WHERE usuario_id = $1 ORDER BY fecha DESC', [req.user.id]);
     res.json(result.rows);
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      error:
-        'Error obteniendo notificaciones'
-
-    });
-
-  }
-
+  } catch (error) { fail(res, error); }
 });
-
-
-// CREAR NOTIFICACIÓN
-
-router.post('/', async (
-  req,
-  res
-) => {
-
+router.post('/', (req, res) => res.status(403).json({ error: 'Operación no permitida' }));
+for (const [action, assignment] of [['leida', 'leido = true'], ['confirmar', 'confirmada = true, leido = true']]) {
+  router.put(`/:id/${action}`, async (req, res) => {
+    if (!validId(req.params.id)) return res.status(400).json({ error: 'ID inválido' });
+    try {
+      const result = await pool.query(`UPDATE notificaciones SET ${assignment} WHERE id = $1 AND usuario_id = $2 RETURNING id`, [req.params.id, req.user.id]);
+      if (!result.rows.length) return res.status(404).json({ error: 'Notificación no encontrada' });
+      res.json({ success: true });
+    } catch (error) { fail(res, error); }
+  });
+}
+router.delete('/:id', async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'ID inválido' });
   try {
-
-    const {
-      mensaje,
-      tipo
-    } = req.body;
-
-    const result =
-      await pool.query(
-
-        `
-        INSERT INTO notificaciones
-        (
-          mensaje,
-          tipo
-        )
-
-        VALUES ($1, $2)
-
-        RETURNING *
-        `,
-
-        [
-          mensaje,
-          tipo
-        ]
-
-      );
-
-    res.json(result.rows[0]);
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      error:
-        'Error creando notificación'
-
-    });
-
-  }
-
+    const result = await pool.query('DELETE FROM notificaciones WHERE id = $1 AND usuario_id = $2 RETURNING id', [req.params.id, req.user.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Notificación no encontrada' });
+    res.json({ success: true });
+  } catch (error) { fail(res, error); }
 });
-
-
-// MARCAR LEÍDA
-
-router.put('/:id/leida', async (
-  req,
-  res
-) => {
-
-  try {
-
-    const { id } = req.params;
-
-    await pool.query(
-
-      `
-      UPDATE notificaciones
-      SET leido = true
-      WHERE id = $1
-      `,
-
-      [id]
-
-    );
-
-    res.json({
-
-      success: true
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      error:
-        'Error actualizando notificación'
-
-    });
-
-  }
-
-});
-
-
-// CONFIRMAR NOTIFICACIÓN
-
-router.put('/:id/confirmar', async (
-  req,
-  res
-) => {
-
-  try {
-
-    const { id } = req.params;
-
-    await pool.query(
-
-      `
-      UPDATE notificaciones
-
-      SET
-        confirmada = true,
-        leido = true
-
-      WHERE id = $1
-      `,
-
-      [id]
-
-    );
-
-    res.json({
-
-      success: true
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      error:
-        'Error confirmando notificación'
-
-    });
-
-  }
-
-});
-
-
-// ELIMINAR NOTIFICACIÓN
-
-router.delete('/:id', async (
-  req,
-  res
-) => {
-
-  try {
-
-    const { id } = req.params;
-
-    await pool.query(
-
-      `
-      DELETE FROM notificaciones
-      WHERE id = $1
-      `,
-
-      [id]
-
-    );
-
-    res.json({
-
-      success: true
-
-    });
-
-  } catch (error) {
-
-    console.log(error);
-
-    res.status(500).json({
-
-      error:
-        'Error eliminando notificación'
-
-    });
-
-  }
-
-});
-
+function validId(value) { return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)); }
+function fail(res, error) {
+  console.error('Notification request failed:', error.code || error.name);
+  res.status(500).json({ error: 'Error procesando notificación' });
+}
 module.exports = router;
