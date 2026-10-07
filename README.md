@@ -33,3 +33,9 @@ Backups contain personal information, password hashes and push tokens. They are 
 `npm run db:restore -- backups/NAME.json`
 
 Restore refuses nonempty tables and runs in a single transaction. It restores data and sequence values, not a general PostgreSQL dump of unrelated objects. Clear old sessions and local app storage after resetting the remote database.
+
+## Water map
+
+Authenticated GET /api/reportes/mapa returns citywide colony aggregates, without user IDs, comments or push tokens. Only water reports in the last 24 hours count, with the latest report per user/colony chosen by date then ID. The endpoint returns no_agua, baja_presion, tengo_agua, ultima_actualizacion and expira (the earliest contributor expiry) per colony. Raw report routes remain restricted to the user's own colony.
+
+Run the PostgreSQL integration test with RUN_DB_TESTS=1 and `node --test tests/map-integration.test.js`. It uses a temporary table and rolls back; real rows are not modified.

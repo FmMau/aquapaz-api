@@ -53,6 +53,31 @@ router.get('/', async (req, res) => {
   } catch (error) { fail(res, error); }
 });
 
+// City map exposes aggregates only, never identities or comments.
+router.get('/mapa', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      WITH ultimos AS (
+        SELECT DISTINCT ON (colonia, usuario_id) colonia, estado, fecha
+        FROM reportes
+        WHERE tipo = 'agua' AND usuario_id IS NOT NULL
+          AND fecha >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '24 hours'
+          AND fecha <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+          AND estado IN ('no_agua', 'baja_presion', 'tengo_agua')
+        ORDER BY colonia, usuario_id, fecha DESC, id DESC
+      )
+      SELECT colonia,
+        COUNT(*) FILTER (WHERE estado = 'no_agua')::int AS no_agua,
+        COUNT(*) FILTER (WHERE estado = 'baja_presion')::int AS baja_presion,
+        COUNT(*) FILTER (WHERE estado = 'tengo_agua')::int AS tengo_agua,
+        to_char(MAX(fecha), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS ultima_actualizacion,
+        to_char(MIN(fecha) + INTERVAL '24 hours', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS expira
+      FROM ultimos GROUP BY colonia ORDER BY colonia
+    `);
+    res.json({ colonias: result.rows, actualizado: new Date().toISOString(), ventana_horas: 24 });
+  } catch (error) { fail(res, error); }
+});
+
 router.get('/colonia/:colonia', async (req, res) => {
   if (req.params.colonia !== req.user.colonia) return res.status(403).json({ error: 'Colonia no autorizada' });
   try {
