@@ -21,6 +21,7 @@ app.use('/api/pipas', require('./routes/pipas.routes'));
 app.get('/', (req, res) => {
   return res.status(200).json({
     success: true,
+    version: require('../package.json').version,
     message: 'AquaPaz API funcionando'
   });
 });

@@ -41,7 +41,7 @@ Authenticated GET /api/reportes/mapa returns citywide colony aggregates, without
 Run the PostgreSQL integration test with RUN_DB_TESTS=1 and `node --test tests/map-integration.test.js`. It uses a temporary table and rolls back; real rows are not modified.
 # Servicio de pipas
 
-`npm run migrate` ahora incluye `migrations/002_pipas.sql`: crea perfiles de operadores y pedidos sin borrar datos. Desplegar el código actualizado es necesario para habilitar los endpoints autenticados bajo `/api/pipas`:
+`npm run migrate` incluye `002_pipas.sql` y `003_pipas_cotizaciones.sql`: crea perfiles, pedidos y cotizaciones sin borrar datos. `npm start` ejecuta la migración mediante `prestart` antes de abrir el servidor; si la migración falla no inicia la API. Las migraciones se serializan con un bloqueo de PostgreSQL y tienen límites de espera. Desplegar el código actualizado habilita los endpoints autenticados bajo `/api/pipas`:
 
 - `GET/POST /pedidos`: consultar las solicitudes propias y crear una con `client_id`, colonia, dirección, referencias, teléfono, litros y coordenadas. Un identificador repetido devuelve la solicitud original si los datos coinciden.
 - `POST /pedidos/:id/cancelar`: el cliente cancela antes de iniciar el viaje.
@@ -50,7 +50,10 @@ Run the PostgreSQL integration test with RUN_DB_TESTS=1 and `node --test tests/m
 - `GET /disponibles`: solicitudes compatibles con la capacidad; no revela datos de contacto ni ubicación exacta antes de aceptar.
 - `POST /pedidos/:id/aceptar`: asignación atómica a un operador disponible, con una sola entrega activa.
 - `PUT /pedidos/:id/estado`: el operador asignado avanza de asignada a en_camino, en_sitio y completada, en ese orden.
+- `PUT /pedidos/:id/cotizacion`: el operador asignado envía `precio_centavos` (1 a 10,000,000), `llegada_estimada_minutos` (1 a 1440), `notas` y la `version` actual. La versión aumenta; repetir el mismo envío recupera la cotización sin duplicarla. Se puede actualizar antes de su aceptación.
+- `POST /pedidos/:id/aceptar-precio`: el cliente confirma la `version` y el `precio_centavos` exactos que revisó. Un precio desactualizado no puede aceptarse. Tras aceptarlo se bloquean cambios de importe y condiciones.
+- `POST /pedidos/:id/rechazar-precio`: el cliente rechaza la `version` vigente y cancela el pedido antes del viaje, conservando la cotización en el historial. Puede crear otra solicitud.
 
-El registro de operadores es directo en esta primera versión; no acredita verificación de proveedores. No hay todavía GPS en vivo, cotización, cobros ni push de pedidos. La app consulta estados mientras está visible. Los respaldos y `migrate:fresh` incluyen las nuevas tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
+El viaje no puede iniciarse hasta que el cliente acepte el precio; la restricción se aplica en la API, también a versiones anteriores de la app. Importes en centavos enteros de MXN y estimaciones del operador, sin cargos automáticos. El registro de operadores es directo; no acredita verificación de proveedores. GPS en vivo, cobros y push de pedidos quedan pendientes. La app consulta estados mientras está visible. Los respaldos y `migrate:fresh` incluyen las tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
 
 Las pruebas PostgreSQL optativas (`RUN_DB_TESTS=1 npm test`) crean un esquema aislado dentro de una transacción y lo revierten; no crean operadores ni pedidos reales.

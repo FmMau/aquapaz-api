@@ -92,6 +92,7 @@ test('PostgreSQL enforces one active order per customer and operator through the
     await client.query('CREATE TABLE usuarios (id INTEGER PRIMARY KEY)');
     await client.query('INSERT INTO usuarios VALUES (7),(8),(9),(10)');
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/002_pipas.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../migrations/003_pipas_cotizaciones.sql'), 'utf8'));
     let result = await invoke('post /pedidos', 7, payload); assert.equal(result.statusCode, 201);
     result = await invoke('post /pedidos', 7, payload); assert.equal(result.body.id, 1);
     // Recover a constraint failure within the isolated outer test transaction.
@@ -106,6 +107,22 @@ test('PostgreSQL enforces one active order per customer and operator through the
     result = await invoke('post /pedidos/:id/aceptar', 9); assert.equal(result.statusCode, 409);
     result = await invoke('put /pedidos/:id/estado', 9, { estado: 'en_camino' }); assert.equal(result.statusCode, 409);
     result = await invoke('put /pedidos/:id/estado', 8, { estado: 'completada' }); assert.equal(result.statusCode, 409);
+    result = await invoke('put /pedidos/:id/estado', 8, { estado: 'en_camino' }); assert.equal(result.statusCode, 409);
+    const quote = { precio_centavos: 120050, llegada_estimada_minutos: 30, notas: 'Incluye traslado y descarga', version: 0 };
+    result = await invoke('put /pedidos/:id/cotizacion', 9, quote); assert.equal(result.statusCode, 409);
+    result = await invoke('put /pedidos/:id/cotizacion', 8, quote); assert.equal(result.body.cotizacion_version, 1);
+    // Lost quote responses can be retried without incrementing the version again.
+    result = await invoke('put /pedidos/:id/cotizacion', 8, quote); assert.equal(result.body.cotizacion_version, 1);
+    result = await invoke('post /pedidos/:id/aceptar-precio', 10, { version: 1, precio_centavos: 120050 }); assert.equal(result.statusCode, 409);
+    result = await invoke('put /pedidos/:id/cotizacion', 8, { ...quote, version: 1, precio_centavos: 130075 }); assert.equal(result.body.cotizacion_version, 2);
+    result = await invoke('post /pedidos/:id/aceptar-precio', 7, { version: 1, precio_centavos: 120050 }); assert.equal(result.statusCode, 409);
+    result = await invoke('post /pedidos/:id/aceptar-precio', 7, { version: 2, precio_centavos: 120050 }); assert.equal(result.statusCode, 409);
+    result = await invoke('post /pedidos/:id/aceptar-precio', 7, { version: 2, precio_centavos: 130075 });
+    assert.equal(result.statusCode, 200); assert.ok(result.body.precio_aceptado_en);
+    const acceptedAt = result.body.precio_aceptado_en.getTime();
+    result = await invoke('post /pedidos/:id/aceptar-precio', 7, { version: 2, precio_centavos: 130075 });
+    assert.equal(result.body.precio_aceptado_en.getTime(), acceptedAt);
+    result = await invoke('put /pedidos/:id/cotizacion', 8, { ...quote, version: 2, precio_centavos: 140000 }); assert.equal(result.statusCode, 409);
     result = await invoke('put /pedidos/:id/estado', 8, { estado: 'en_camino' }); assert.equal(result.body.estado, 'en_camino');
     result = await invoke('post /pedidos/:id/cancelar', 7); assert.equal(result.statusCode, 409);
     result = await invoke('put /pedidos/:id/estado', 8, { estado: 'en_sitio' }); assert.equal(result.body.estado, 'en_sitio');
@@ -114,5 +131,35 @@ test('PostgreSQL enforces one active order per customer and operator through the
     result = await invoke('post /pedidos/:id/aceptar', 8, undefined, String(result.body.id)); assert.equal(result.body.estado, 'asignada');
     result = await invoke('post /pedidos', 10, { ...payload, client_id: 'different-user-key' }); assert.equal(result.statusCode, 201);
     result = await invoke('post /pedidos/:id/aceptar', 8, undefined, String(result.body.id)); assert.equal(result.statusCode, 409);
+    const current = (await client.query("SELECT id FROM pedidos_pipa WHERE usuario_id=7 AND estado='asignada'")).rows[0].id;
+    result = await invoke('put /pedidos/:id/cotizacion', 8, quote, String(current)); assert.equal(result.body.cotizacion_version, 1);
+    result = await invoke('post /pedidos/:id/rechazar-precio', 7, { version: 2 }, String(current)); assert.equal(result.statusCode, 409);
+    result = await invoke('post /pedidos/:id/rechazar-precio', 10, { version: 1 }, String(current)); assert.equal(result.statusCode, 409);
+    result = await invoke('post /pedidos/:id/rechazar-precio', 7, { version: 1 }, String(current)); assert.equal(result.body.estado, 'cancelada');
+    assert.equal(result.body.precio_centavos, 120050); assert.equal(result.body.precio_aceptado_en, null);
   } finally { await client.query('ROLLBACK').catch(() => {}); await client.end(); }
+});
+
+test('invalid quote money, version and ETA are rejected before touching the database', async () => {
+  const app = load({ query: () => assert.fail('Must not query') });
+  const quote = { precio_centavos: 120050, llegada_estimada_minutos: 30, version: 0 };
+  for (const invalid of [{ precio_centavos: 0 }, { precio_centavos: 1200.5 }, { precio_centavos: '120000' }, { precio_centavos: 10000001 }, { llegada_estimada_minutos: 0 }, { version: -1 }, { notas: 'x'.repeat(501) }]) {
+    const res = response(); await app.routes.get('put /pedidos/:id/cotizacion')(request({ ...quote, ...invalid }), res); assert.equal(res.statusCode, 400);
+  }
+});
+test('starting travel requires accepted quote in the database, even from old app clients', async () => {
+  const app = load({ query: async (sql, values) => {
+    assert.ok(sql.includes('precio_centavos IS NOT NULL AND precio_aceptado_en IS NOT NULL'));
+    assert.equal(values[0], 'en_camino'); return { rows: [] };
+  } });
+  const res = response(); await app.routes.get('put /pedidos/:id/estado')(request({ estado: 'en_camino' }), res);
+  assert.equal(res.statusCode, 409);
+});
+test('quote acceptance matches exact owner, quote version and total', async () => {
+  const app = load({ query: async (sql, values) => {
+    assert.ok(sql.includes('usuario_id=$2')); assert.ok(sql.includes('cotizacion_version=$3 AND precio_centavos=$4'));
+    assert.deepEqual(Array.from(values), ['1', 7, 3, 120050]); return { rows: [] };
+  } });
+  const res = response(); await app.routes.get('post /pedidos/:id/aceptar-precio')(request({ version: 3, precio_centavos: 120050 }), res);
+  assert.equal(res.statusCode, 409);
 });

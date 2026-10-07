@@ -128,9 +128,62 @@ router.put('/pedidos/:id/estado', async (req, res) => {
   if (!validId(req.params.id) || !Object.hasOwn(previous, estado)) return res.status(400).json({ error: 'Cambio de estado inválido' });
   try {
     const result = await pool.query(`UPDATE pedidos_pipa SET estado=$1,actualizado=NOW()
-      WHERE id=$2 AND estado=$3 AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$4) RETURNING *`,
+      WHERE id=$2 AND estado=$3 AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$4)
+        AND ($1 <> 'en_camino' OR (precio_centavos IS NOT NULL AND precio_aceptado_en IS NOT NULL)) RETURNING *`,
     [estado, req.params.id, previous[estado], req.user.id]);
-    if (!result.rows.length) return res.status(409).json({ error: 'No puedes cambiar este pedido. Actualiza su estado.' });
+    if (!result.rows.length) return res.status(409).json({ error: 'No puedes cambiar este pedido. Para iniciar el viaje el cliente debe aceptar el precio.' });
+    res.json(result.rows[0]);
+  } catch (error) { fail(res, error); }
+});
+
+router.put('/pedidos/:id/cotizacion', async (req, res) => {
+  const b = req.body || {};
+  if (!validId(req.params.id) || !Number.isSafeInteger(b.precio_centavos) || b.precio_centavos < 1 || b.precio_centavos > 10000000
+    || !Number.isSafeInteger(b.version) || b.version < 0 || !text(b.notas ?? '', 0, 500)
+    || !Number.isInteger(b.llegada_estimada_minutos) || b.llegada_estimada_minutos < 1 || b.llegada_estimada_minutos > 1440) {
+    return res.status(400).json({ error: 'Indica un precio total válido, tiempo estimado entre 1 y 1440 minutos y notas de hasta 500 caracteres.' });
+  }
+  const notas = (b.notas || '').trim();
+  try {
+    const result = await pool.query(`UPDATE pedidos_pipa SET precio_centavos=$1,llegada_estimada_minutos=$2,
+      cotizacion_notas=$3,cotizacion_version=cotizacion_version+1,actualizado=NOW()
+      WHERE id=$4 AND estado='asignada' AND precio_aceptado_en IS NULL AND cotizacion_version=$5
+        AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$6) RETURNING *`,
+    [b.precio_centavos, b.llegada_estimada_minutos, notas, req.params.id, b.version, req.user.id]);
+    if (result.rows.length) return res.json(result.rows[0]);
+    // A retry of a lost response must not publish a second quote version.
+    const replay = (await pool.query(`SELECT * FROM pedidos_pipa WHERE id=$1
+      AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$2)`, [req.params.id, req.user.id])).rows[0];
+    if (replay?.estado === 'asignada' && replay.cotizacion_version === b.version + 1
+      && replay.precio_centavos === b.precio_centavos && replay.llegada_estimada_minutos === b.llegada_estimada_minutos
+      && replay.cotizacion_notas === notas) return res.json(replay);
+    res.status(409).json({ error: 'La cotización cambió, ya fue aceptada o el pedido no te pertenece. Actualiza antes de cotizar.' });
+  } catch (error) { fail(res, error); }
+});
+
+router.post('/pedidos/:id/aceptar-precio', async (req, res) => {
+  const b = req.body || {};
+  if (!validId(req.params.id) || !Number.isSafeInteger(b.version) || b.version < 1
+    || !Number.isSafeInteger(b.precio_centavos) || b.precio_centavos < 1 || b.precio_centavos > 10000000) {
+    return res.status(400).json({ error: 'Cotización inválida' });
+  }
+  try {
+    const result = await pool.query(`UPDATE pedidos_pipa SET precio_aceptado_en=COALESCE(precio_aceptado_en,NOW()),actualizado=NOW()
+      WHERE id=$1 AND usuario_id=$2 AND estado='asignada' AND cotizacion_version=$3 AND precio_centavos=$4 RETURNING *`,
+    [req.params.id, req.user.id, b.version, b.precio_centavos]);
+    if (!result.rows.length) return res.status(409).json({ error: 'El precio cambió o el pedido ya no está disponible. Actualiza y revisa la cotización.' });
+    res.json(result.rows[0]);
+  } catch (error) { fail(res, error); }
+});
+
+router.post('/pedidos/:id/rechazar-precio', async (req, res) => {
+  const b = req.body || {};
+  if (!validId(req.params.id) || !Number.isSafeInteger(b.version) || b.version < 1) return res.status(400).json({ error: 'Cotización inválida' });
+  try {
+    const result = await pool.query(`UPDATE pedidos_pipa SET estado='cancelada',actualizado=NOW()
+      WHERE id=$1 AND usuario_id=$2 AND estado='asignada' AND precio_aceptado_en IS NULL
+        AND cotizacion_version=$3 AND precio_centavos IS NOT NULL RETURNING *`, [req.params.id, req.user.id, b.version]);
+    if (!result.rows.length) return res.status(409).json({ error: 'La cotización cambió o ya fue aceptada. Actualiza su estado.' });
     res.json(result.rows[0]);
   } catch (error) { fail(res, error); }
 });
