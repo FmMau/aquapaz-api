@@ -10,6 +10,8 @@ El código incluye acceso con contraseña, recuperación por código y acceso co
 
 `npm start` aplica las migraciones antes de iniciar. El frontend puede mostrar la pantalla nueva en Expo Go, pero los endpoints nuevos requieren esta API. Las cuentas existentes conservan su contraseña y token hasta su expiración; recuperar la contraseña incrementa la versión de autenticación y revoca las sesiones anteriores.
 
+`railway.toml` fija `npm start` como comando de inicio y `/` como comprobación de salud, para que Railway ejecute `prestart` antes de recibir tráfico en cada despliegue.
+
 ## Correo de recuperación
 
 Configura una cuenta SMTP transaccional mediante `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` y `AUTH_MAIL_FROM`. Usa un remitente autorizado por tu proveedor. Normalmente 587 usa STARTTLS y `SMTP_SECURE=false`; 465 usa TLS directo y `SMTP_SECURE=true`.
