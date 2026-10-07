@@ -26,7 +26,12 @@ const { tables } = require('./database-tools');
     }
     for (const table of tables) {
       for (const row of snapshot.tables[table]) {
-        await client.query(`INSERT INTO "${table}" SELECT * FROM json_populate_record(NULL::"${table}", $1::json)`, [JSON.stringify(row)]);
+        // json_populate_record fills missing columns with NULL rather than defaults.
+        const record = table === 'pedidos_pipa' ? {
+          ...row, cotizacion_version: row.cotizacion_version ?? 0,
+          cotizacion_notas: row.cotizacion_notas ?? '',
+        } : row;
+        await client.query(`INSERT INTO "${table}" SELECT * FROM json_populate_record(NULL::"${table}", $1::json)`, [JSON.stringify(record)]);
       }
       const sequence = snapshot.sequences[table];
       if (sequence) await client.query('SELECT setval(pg_get_serial_sequence($1, $2), $3, $4)', ['public.' + table, 'id', sequence.last_value, sequence.is_called]);
