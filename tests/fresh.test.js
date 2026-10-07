@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { freshDatabase, schemaSql } = require('../scripts/database-tools');
+const { freshDatabase, schemaSql, tables } = require('../scripts/database-tools');
 
 function fake() {
   const calls = [];
@@ -21,7 +21,7 @@ test('fresh backs up before dropping, preserves IDs, and commits atomically', as
   } });
   assert.equal(result.removed.usuarios, 1);
   assert.ok(client.calls.includes('COMMIT'));
-  assert.equal(client.calls.filter(sql => sql.includes('setval')).length, 4);
+  assert.equal(client.calls.filter(sql => sql.includes('setval')).length, tables.length);
   assert.ok(!client.calls.some(sql => /CASCADE/.test(sql)));
 });
 test('backup failure aborts fresh before any DROP', async () => {
@@ -33,5 +33,5 @@ test('backup failure aborts fresh before any DROP', async () => {
 test('full schema is transaction-compatible and creates all application tables', () => {
   const sql = schemaSql();
   assert.ok(!/^\s*(BEGIN|COMMIT);/m.test(sql));
-  for (const table of ['usuarios', 'reportes', 'confirmaciones', 'notificaciones']) assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS ' + table));
+  for (const table of tables) assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS ' + table));
 });

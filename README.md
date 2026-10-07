@@ -39,3 +39,18 @@ Restore refuses nonempty tables and runs in a single transaction. It restores da
 Authenticated GET /api/reportes/mapa returns citywide colony aggregates, without user IDs, comments or push tokens. Only water reports in the last 24 hours count, with the latest report per user/colony chosen by date then ID. The endpoint returns no_agua, baja_presion, tengo_agua, ultima_actualizacion and expira (the earliest contributor expiry) per colony. Raw report routes remain restricted to the user's own colony.
 
 Run the PostgreSQL integration test with RUN_DB_TESTS=1 and `node --test tests/map-integration.test.js`. It uses a temporary table and rolls back; real rows are not modified.
+# Servicio de pipas
+
+`npm run migrate` ahora incluye `migrations/002_pipas.sql`: crea perfiles de operadores y pedidos sin borrar datos. Desplegar el código actualizado es necesario para habilitar los endpoints autenticados bajo `/api/pipas`:
+
+- `GET/POST /pedidos`: consultar las solicitudes propias y crear una con `client_id`, colonia, dirección, referencias, teléfono, litros y coordenadas. Un identificador repetido devuelve la solicitud original si los datos coinciden.
+- `POST /pedidos/:id/cancelar`: el cliente cancela antes de iniciar el viaje.
+- `GET/POST /operador`: perfil propio, entrega activa y registro de pipa con nombre, placas, teléfono y capacidad.
+- `PUT /operador/disponibilidad`: activar o desactivar la recepción de pedidos.
+- `GET /disponibles`: solicitudes compatibles con la capacidad; no revela datos de contacto ni ubicación exacta antes de aceptar.
+- `POST /pedidos/:id/aceptar`: asignación atómica a un operador disponible, con una sola entrega activa.
+- `PUT /pedidos/:id/estado`: el operador asignado avanza de asignada a en_camino, en_sitio y completada, en ese orden.
+
+El registro de operadores es directo en esta primera versión; no acredita verificación de proveedores. No hay todavía GPS en vivo, cotización, cobros ni push de pedidos. La app consulta estados mientras está visible. Los respaldos y `migrate:fresh` incluyen las nuevas tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
+
+Las pruebas PostgreSQL optativas (`RUN_DB_TESTS=1 npm test`) crean un esquema aislado dentro de una transacción y lo revierten; no crean operadores ni pedidos reales.

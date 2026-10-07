@@ -1,10 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const tables = ['usuarios', 'reportes', 'confirmaciones', 'notificaciones'];
+const tables = ['usuarios', 'reportes', 'confirmaciones', 'notificaciones', 'operadores_pipa', 'pedidos_pipa'];
 
 function schemaSql() {
-  return ['000_base_schema.sql', '001_sync_and_ownership.sql'].map(file =>
+  return ['000_base_schema.sql', '001_sync_and_ownership.sql', '002_pipas.sql'].map(file =>
     fs.readFileSync(path.join(__dirname, '../migrations', file), 'utf8')
       .replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')
   ).join('\n');
@@ -39,7 +39,7 @@ async function freshDatabase(client, { backup = saveBackup, sql = schemaSql() } 
     snapshot.columns = (await client.query("SELECT table_name, column_name, data_type, column_default, is_nullable FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position")).rows;
     const file = await backup(snapshot);
     // No CASCADE: an unexpected external dependency aborts the transaction.
-    await client.query('DROP TABLE IF EXISTS public.notificaciones, public.confirmaciones, public.reportes, public.usuarios');
+    await client.query('DROP TABLE IF EXISTS public.pedidos_pipa, public.operadores_pipa, public.notificaciones, public.confirmaciones, public.reportes, public.usuarios');
     await client.query(sql);
     // Never reuse old IDs: cached reports and old JWTs must not target new records.
     for (const table of tables) {
