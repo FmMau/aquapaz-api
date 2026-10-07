@@ -28,7 +28,7 @@ router.post('/register', async (req, res) => {
     const result = await pool.query(
       `INSERT INTO usuarios (nombre, email, telefono, password, colonia, push_token)
        VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id, nombre, email, colonia`,
+       RETURNING id, nombre, email, telefono, colonia`,
       [nombre, email, telefono, hashedPassword, colonia, pushTokenToSave]
     );
 
@@ -75,7 +75,7 @@ router.post('/login', async (req, res) => {
     );
 
     res.json({
-      user: { id: user.id, nombre: user.nombre, email: user.email, colonia: user.colonia },
+      user: { id: user.id, nombre: user.nombre, email: user.email, telefono: user.telefono, colonia: user.colonia },
       token,
     });
   } catch (error) {

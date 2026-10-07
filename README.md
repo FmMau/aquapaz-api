@@ -14,6 +14,16 @@ Reports and confirmations require `Authorization: Bearer <JWT>`. The server deri
 
 Each user can confirm a report once and cannot confirm their own report. Report locks serialize confirmations; legacy duplicate rows count only once per identified user. Notifications are readable and mutable only by their recipient; client creation is forbidden.
 
+## Perfil de usuario
+
+`GET /api/auth/perfil` consulta únicamente la cuenta autenticada. `PUT /api/auth/perfil` reemplaza `nombre`, `telefono` y `colonia` y devuelve `{ user: { id, nombre, email, telefono, colonia } }`. Ambos requieren JWT. No acepta IDs, correo, contraseña, tokens ni otros campos en el cuerpo. El nombre admite hasta 100 caracteres y el teléfono de 10 a 15 dígitos, con formato de hasta 20 caracteres.
+
+`src/data/colonias.json` contiene los 302 nombres canónicos agrupados por `src/data/colonias.js` en el frontend, incluyendo sus alias municipales. La API valida la colonia contra este catálogo. Al modificar los límites o alias, actualiza ambos catálogos juntos. Login y registro ahora incluyen teléfono en su respuesta pública.
+
+No requiere cambios de esquema. Actualiza solo la fila del usuario del JWT; no cambia reportes, pedidos ni perfiles de operadores existentes. La app solicita sincronizar su trabajo local pendiente antes de cambiar de colonia. El correo y la contraseña no se editan en este endpoint.
+
+Para probar autenticación, lectura y guardado por HTTP contra PostgreSQL, configura `RUN_DB_TESTS=1` y ejecuta `node --test tests/profile-integration.test.js`. Usa una clave JWT aislada y una tabla temporal dentro de una transacción que se revierte, sin modificar cuentas reales.
+
 ## Verification
 
 Run `npm test`. Route tests use injected database/JWT adapters and do not contact production. Real PostgreSQL migration, concurrent database operations and remote push delivery still require integration testing in staging.

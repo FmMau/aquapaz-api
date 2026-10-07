@@ -14,6 +14,7 @@ const notificacionesRoutes = require('./routes/notificaciones.routes');
 const reportesRoutes = require('./routes/reportes.routes');
 
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/perfil', require('./routes/profile.routes'));
 app.use('/api/notificaciones', notificacionesRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/pipas', require('./routes/pipas.routes'));
