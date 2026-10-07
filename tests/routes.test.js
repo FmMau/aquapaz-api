@@ -120,9 +120,8 @@ test('reusing a retry key for another payload returns conflict', async () => {
   await app.routes.get('post /')(req, res); assert.equal(res.statusCode, 409);
 });
 test('invalid registration is rejected before password hashing or database writes', async () => {
-  const app = load('routes/auth.routes.js', { query: () => assert.fail('Unexpected query') }, { bcryptjs: { hash: () => assert.fail('Unexpected hashing') }, jsonwebtoken: {} });
-  const req = request(); req.body = { nombre: 'Usuario', email: 'invalid', password: '123' }; const res = response();
-  await app.routes.get('post /register')(req, res); assert.equal(res.statusCode, 400);
+  const auth = require('../src/services/password-auth').createPasswordAuth({ pool: { query: () => assert.fail('Unexpected query') }, mailer: {} });
+  await assert.rejects(auth.register({ nombre: 'Usuario', email: 'invalid', password: '123' }), error => error.status === 400);
 });
 test('authentication rejects missing, malformed and expired tokens without database access', async () => {
   const app = load('middlewares/auth.middleware.js', { query: () => { throw new Error('Must not query'); } }, { jsonwebtoken: { verify: () => { const e = new Error(); e.name = 'TokenExpiredError'; throw e; } } });

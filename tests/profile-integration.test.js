@@ -28,8 +28,8 @@ test('HTTP profile editing on PostgreSQL authenticates ownership and preserves u
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/routes/profile.routes.js'), 'utf8'), routeContext);
   try {
     await client.connect(); await client.query('BEGIN');
-    await client.query('CREATE TEMP TABLE usuarios (id int PRIMARY KEY, nombre varchar(100), email varchar(120), telefono varchar(20), colonia varchar(100), password text, push_token text) ON COMMIT DROP');
-    await client.query("INSERT INTO usuarios VALUES (7,'Antes','before@example.test','6121234567','Centro','private-password','private-push'),(8,'Otra cuenta','other@example.test','6121234568','Centro','other-password',NULL)");
+    await client.query('CREATE TEMP TABLE usuarios (id int PRIMARY KEY, nombre varchar(100), email varchar(120), telefono varchar(20), colonia varchar(100), password text, push_token text, auth_version int NOT NULL DEFAULT 0) ON COMMIT DROP');
+    await client.query("INSERT INTO usuarios(id,nombre,email,telefono,colonia,password,push_token) VALUES (7,'Antes','before@example.test','6121234567','Centro','private-password','private-push'),(8,'Otra cuenta','other@example.test','6121234568','Centro','other-password',NULL)");
     const app = express(); app.use(express.json()); app.use('/api/auth/perfil', routeContext.module.exports);
     server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
     const url = `http://127.0.0.1:${server.address().port}/api/auth/perfil`;

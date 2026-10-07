@@ -2,6 +2,10 @@
 
 API Express/PostgreSQL. Node 20; configure DATABASE_URL, JWT_SECRET and optionally JWT_EXPIRES_IN (default 1h). Never commit credentials.
 
+## Acceso, registro y recuperación
+
+Consulta [CONFIGURACION_ACCESO.md](CONFIGURACION_ACCESO.md) y `.env.example` para habilitar correo SMTP, Google y Apple. La migración `006_auth.sql` no borra cuentas. Los endpoints públicos de acceso validan campos, normalizan correo, limitan intentos y devuelven solo el perfil público y un JWT. La recuperación invalida las sesiones anteriores; los códigos de correo y los códigos sociales caducan y solo pueden utilizarse una vez.
+
 ## Apply the synchronization update
 
 1. Install dependencies: `npm install`.

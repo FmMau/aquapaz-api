@@ -6,13 +6,15 @@ const cors = require('cors');
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '32kb' }));
 
 // Routes
 const authRoutes = require('./routes/auth.routes');
 const notificacionesRoutes = require('./routes/notificaciones.routes');
 const reportesRoutes = require('./routes/reportes.routes');
 
+app.use('/api/auth', require('./routes/auth-access.routes'));
 app.use('/api/auth', authRoutes);
 app.use('/api/auth/perfil', require('./routes/profile.routes'));
 app.use('/api/notificaciones', notificacionesRoutes);
