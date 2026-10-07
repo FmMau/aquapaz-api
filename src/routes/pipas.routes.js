@@ -21,6 +21,23 @@ router.get('/pedidos', async (req, res) => {
   } catch (error) { fail(res, error); }
 });
 
+router.get('/pedidos/:id', async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Pedido inválido' });
+  try {
+    const owned = (await pool.query(`${details} WHERE p.id=$1 AND (p.usuario_id=$2 OR
+      p.operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$2))`, [req.params.id, req.user.id])).rows[0];
+    if (owned) return res.json({ pedido: owned, disponible: false });
+    // A notification about a new request never grants access to delivery/contact details.
+    const available = (await pool.query(`SELECT p.id,p.colonia,p.litros,p.fecha,p.estado FROM pedidos_pipa p
+      JOIN operadores_pipa o ON o.usuario_id=$2 AND o.disponible AND o.capacidad>=p.litros
+      WHERE p.id=$1 AND p.estado='solicitada' AND p.usuario_id<>$2
+        AND NOT EXISTS (SELECT 1 FROM pedidos_pipa job WHERE job.operador_id=o.id AND job.estado NOT IN ('completada','cancelada'))`,
+    [req.params.id, req.user.id])).rows[0];
+    if (!available) return res.status(404).json({ error: 'Este pedido ya no está disponible para tu cuenta.' });
+    res.json({ pedido: available, disponible: true });
+  } catch (error) { fail(res, error); }
+});
+
 router.post('/pedidos', async (req, res) => {
   const b = req.body || {};
   if (!text(b.client_id, 8, 128) || !/^[a-zA-Z0-9_-]+$/.test(b.client_id) || !text(b.colonia, 2, 100)

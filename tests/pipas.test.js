@@ -89,11 +89,12 @@ test('PostgreSQL enforces one active order per customer and operator through the
     await client.connect(); await client.query('BEGIN');
     await client.query(`CREATE SCHEMA "${schema}"`);
     await client.query(`SET LOCAL search_path TO "${schema}"`);
-    await client.query('CREATE TABLE usuarios (id INTEGER PRIMARY KEY)');
-    await client.query('INSERT INTO usuarios VALUES (7),(8),(9),(10)');
+    await client.query(fs.readFileSync(path.join(__dirname, '../migrations/000_base_schema.sql'), 'utf8'));
+    await client.query('INSERT INTO usuarios (id) VALUES (7),(8),(9),(10)');
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/002_pipas.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/003_pipas_cotizaciones.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/004_pipas_ubicacion.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../migrations/005_pipas_notificaciones.sql'), 'utf8'));
     let result = await invoke('post /pedidos', 7, payload); assert.equal(result.statusCode, 201);
     result = await invoke('post /pedidos', 7, payload); assert.equal(result.body.id, 1);
     // Recover a constraint failure within the isolated outer test transaction.
@@ -152,6 +153,37 @@ test('PostgreSQL enforces one active order per customer and operator through the
     result = await invoke('post /pedidos/:id/rechazar-precio', 10, { version: 1 }, String(current)); assert.equal(result.statusCode, 409);
     result = await invoke('post /pedidos/:id/rechazar-precio', 7, { version: 1 }, String(current)); assert.equal(result.body.estado, 'cancelada');
     assert.equal(result.body.precio_centavos, 120050); assert.equal(result.body.precio_aceptado_en, null);
+    const events = (await client.query('SELECT usuario_id,pedido_id,evento,push_estado FROM notificaciones ORDER BY id')).rows;
+    const customerEvents = events.filter(event => event.pedido_id === 1 && event.usuario_id === 7).map(event => event.evento);
+    assert.deepEqual(customerEvents, ['asignada', 'cotizacion:1', 'cotizacion:2', 'en_camino', 'en_sitio', 'completada']);
+    assert.equal(events.filter(event => event.pedido_id === 1 && event.usuario_id === 8 && event.evento === 'precio_aceptado:2').length, 1);
+    assert.equal(events.filter(event => event.pedido_id === current && event.evento === 'cancelada').length, 2);
+    assert.ok(events.every(event => event.push_estado === 'pendiente'));
+    assert.ok(!events.some(event => event.usuario_id === 9 && event.evento !== 'solicitada'));
+    assert.deepEqual(events.filter(event => event.pedido_id === current && event.evento === 'solicitada').map(event => event.usuario_id).sort(), [8, 9]);
+    const otherOrder = (await client.query('SELECT id FROM pedidos_pipa WHERE usuario_id=10')).rows[0].id;
+    assert.deepEqual(events.filter(event => event.pedido_id === otherOrder && event.evento === 'solicitada').map(event => event.usuario_id), [9]);
+    result = await invoke('get /pedidos/:id', 7); assert.equal(result.body.pedido.direccion, payload.direccion);
+    result = await invoke('get /pedidos/:id', 8); assert.equal(result.body.pedido.id, 1);
+    result = await invoke('get /pedidos/:id', 9); assert.equal(result.statusCode, 404);
+    result = await invoke('get /pedidos/:id', 9, undefined, String(otherOrder)); assert.equal(result.body.disponible, true);
+    assert.equal(result.body.pedido.telefono, undefined); assert.equal(result.body.pedido.latitud, undefined);
+    await client.query('INSERT INTO usuarios (id) VALUES (12)');
+    await client.query("INSERT INTO operadores_pipa (usuario_id,nombre,placas,telefono,capacidad,disponible) VALUES (12,'Operador de prueba','TEST12','6121234567',20000,true)");
+    result = await invoke('post /pedidos', 12, { ...payload, litros: 20000, client_id: 'capacity-self-test' });
+    assert.equal(result.statusCode, 201);
+    assert.equal((await client.query('SELECT COUNT(*)::int AS total FROM notificaciones')).rows[0].total, events.length);
+    // Backup restoration suppresses trigger notifications even with an active operator.
+    const count = events.length;
+    await client.query("SET LOCAL aquapaz.restoring = 'on'");
+    await client.query("INSERT INTO pedidos_pipa (usuario_id,client_id,colonia,direccion,telefono,litros,latitud,longitud) VALUES (7,'restore-order','Centro','Morelos 123','6121234567',5000,24.12,-110.32)");
+    assert.equal((await client.query('SELECT COUNT(*)::int AS total FROM notificaciones')).rows[0].total, count);
+    const worker = require('../src/services/pipa-notifications').createPushWorker({
+      pool: { query: (sql, params) => client.query(sql, params) }, fetcher: () => assert.fail('Must not send push without a token'),
+      logger: { error: code => assert.fail(code) },
+    });
+    await worker.tick();
+    assert.equal((await client.query("SELECT COUNT(*)::int AS total FROM notificaciones WHERE push_estado='sin_dispositivo'")).rows[0].total, 5);
   } finally { await client.query('ROLLBACK').catch(() => {}); await client.end(); }
 });
 

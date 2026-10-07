@@ -14,9 +14,8 @@ const enviarPushAColonia = async (colonia, usuarioIdExcluir, titulo, mensaje, re
       [colonia, usuarioIdExcluir]
     );
 
-    const tokens = result.rows
-      .map((r) => r.push_token)
-      .filter((token) => typeof token === 'string' && /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/.test(token));
+    const recipients = result.rows.filter(r => typeof r.push_token === 'string' && /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/.test(r.push_token));
+    const tokens = recipients.map(r => r.push_token);
 
     if (tokens.length === 0) {
       return { sent: false, totalTokens: 0, expoResult: null };
@@ -26,12 +25,12 @@ const enviarPushAColonia = async (colonia, usuarioIdExcluir, titulo, mensaje, re
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(
-        tokens.map((token) => ({
-          to: token,
+        recipients.map((recipient) => ({
+          to: recipient.push_token,
           title: titulo,
           body: mensaje,
           sound: 'default',
-          data: { reporte_id },
+          data: { tipo: 'reporte', reporte_id, usuario_id: recipient.id },
         }))
       ),
     });

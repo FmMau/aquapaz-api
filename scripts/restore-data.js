@@ -19,6 +19,7 @@ const { tables } = require('./database-tools');
     await client.query('BEGIN');
     await client.query("SET LOCAL lock_timeout = '5s'");
     await client.query('SET LOCAL search_path = public');
+    await client.query("SET LOCAL aquapaz.restoring = 'on'");
     await client.query('LOCK TABLE usuarios, reportes, confirmaciones, notificaciones, operadores_pipa, pedidos_pipa IN ACCESS EXCLUSIVE MODE');
     for (const table of tables) {
       const count = await client.query(`SELECT COUNT(*)::int AS total FROM "${table}"`);
@@ -30,6 +31,9 @@ const { tables } = require('./database-tools');
         const record = table === 'pedidos_pipa' ? {
           ...row, cotizacion_version: row.cotizacion_version ?? 0,
           cotizacion_notas: row.cotizacion_notas ?? '',
+        } : table === 'notificaciones' ? {
+          ...row, push_estado: null, push_ticket: null, push_token_enviado: null,
+          push_intentos: null, push_proximo: null, push_error: null,
         } : row;
         await client.query(`INSERT INTO "${table}" SELECT * FROM json_populate_record(NULL::"${table}", $1::json)`, [JSON.stringify(record)]);
       }

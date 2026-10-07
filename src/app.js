@@ -27,6 +27,9 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+const pushWorker = require('./services/pipa-notifications').createPushWorker({ pool: require('./database/db') });
+const pushTimer = setInterval(() => { void pushWorker.tick(); }, 15000);
+pushTimer.unref();
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
@@ -42,6 +45,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 process.on('SIGTERM', () => {
+  clearInterval(pushTimer);
   server.close(() => {
     console.log('Servidor cerrado correctamente');
     process.exit(0);

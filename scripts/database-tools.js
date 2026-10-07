@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const tables = ['usuarios', 'reportes', 'confirmaciones', 'notificaciones', 'operadores_pipa', 'pedidos_pipa'];
 
 function schemaSql() {
-  return ['000_base_schema.sql', '001_sync_and_ownership.sql', '002_pipas.sql', '003_pipas_cotizaciones.sql', '004_pipas_ubicacion.sql'].map(file =>
+  return ['000_base_schema.sql', '001_sync_and_ownership.sql', '002_pipas.sql', '003_pipas_cotizaciones.sql', '004_pipas_ubicacion.sql', '005_pipas_notificaciones.sql'].map(file =>
     fs.readFileSync(path.join(__dirname, '../migrations', file), 'utf8')
       .replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')
   ).join('\n');

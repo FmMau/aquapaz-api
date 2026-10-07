@@ -66,6 +66,45 @@ test('notification mutation is restricted to recipient', async () => {
   const req = request(); req.params.id = '12'; const res = response(); await app.routes.get('delete /:id')(req, res);
   assert.equal(res.statusCode, 404); assert.deepEqual(Array.from(values), ['12', 7]);
 });
+
+test('notification inbox exposes event details but never push delivery tokens', async () => {
+  const app = load('routes/notificaciones.routes.js', { query: async (sql, args) => {
+    assert.ok(sql.includes('usuario_id = $1')); assert.equal(args[0], 7);
+    assert.ok(sql.includes('pedido_id')); assert.ok(!sql.includes('SELECT *')); assert.ok(!sql.includes('push_token'));
+    return { rows: [] };
+  } });
+  const res = response(); await app.routes.get('get /')(request(), res); assert.equal(res.statusCode, 200);
+});
+
+test('a pipa event cannot be confirmed as a water report', async () => {
+  const app = load('routes/notificaciones.routes.js', { query: async sql => {
+    assert.ok(sql.includes("AND tipo <> 'pipa'")); return { rows: [] };
+  } });
+  const req = request(); req.params.id = '41'; const res = response(); await app.routes.get('put /:id/confirmar')(req, res);
+  assert.equal(res.statusCode, 404);
+});
+
+test('push registration atomically transfers a device to its authenticated owner', async () => {
+  const calls = [];
+  const client = { query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; }, release() {} };
+  const app = load('routes/auth.routes.js', { connect: async () => client }, { bcryptjs: {}, jsonwebtoken: {} });
+  const req = request(); req.body = { push_token: 'ExpoPushToken[device_token]', usuario_id: 999 };
+  const res = response(); await app.routes.get('post /push-token')(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.ok(calls.some(call => call.sql.includes('pg_advisory_xact_lock')));
+  assert.equal(calls.find(call => call.sql.includes('id<>$2')).params[1], 7);
+  assert.equal(calls.find(call => call.sql.includes('SET push_token = $1')).params[1], 7);
+  assert.equal(calls.at(-1).sql, 'COMMIT');
+});
+
+test('logout detaches only this account and this token, not its replacement', async () => {
+  const app = load('routes/auth.routes.js', { query: async (sql, args) => {
+    assert.ok(sql.includes('id=$1 AND push_token=$2')); assert.deepEqual(Array.from(args), [7, 'ExpoPushToken[old_device]']);
+    return { rows: [] };
+  } }, { bcryptjs: {}, jsonwebtoken: {} });
+  const req = request(); req.body = { push_token: 'ExpoPushToken[old_device]' };
+  const res = response(); await app.routes.get('delete /push-token')(req, res); assert.equal(res.statusCode, 200);
+});
 test('a user cannot confirm their own report and transaction rolls back', async () => {
   const queries = [];
   const client = { release() {}, query: async sql => { queries.push(sql); return { rows: sql.includes('FOR UPDATE') ? [report] : [] }; } };

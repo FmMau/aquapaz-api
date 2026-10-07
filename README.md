@@ -54,7 +54,21 @@ Run the PostgreSQL integration test with RUN_DB_TESTS=1 and `node --test tests/m
 - `POST /pedidos/:id/aceptar-precio`: el cliente confirma la `version` y el `precio_centavos` exactos que revisó. Un precio desactualizado no puede aceptarse. Tras aceptarlo se bloquean cambios de importe y condiciones.
 - `POST /pedidos/:id/rechazar-precio`: el cliente rechaza la `version` vigente y cancela el pedido antes del viaje, conservando la cotización en el historial. Puede crear otra solicitud.
 
-El viaje no puede iniciarse hasta que el cliente acepte el precio; la restricción se aplica en la API, también a versiones anteriores de la app. Importes en centavos enteros de MXN y estimaciones del operador, sin cargos automáticos. El registro de operadores es directo; no acredita verificación de proveedores. GPS en segundo plano, cobros y push de pedidos quedan pendientes. La app consulta estados mientras está visible. Los respaldos y `migrate:fresh` incluyen las tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
+El viaje no puede iniciarse hasta que el cliente acepte el precio; la restricción se aplica en la API, también a versiones anteriores de la app. Importes en centavos enteros de MXN y estimaciones del operador, sin cargos automáticos. El registro de operadores es directo; no acredita verificación de proveedores. GPS en segundo plano y cobros quedan pendientes. Los respaldos y `migrate:fresh` incluyen las tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
+
+## Notificaciones de pipas
+
+`005_pipas_notificaciones.sql` agrega metadatos y una cola de push en `notificaciones`. Un trigger guarda los eventos en la misma transacción del pedido: nueva solicitud para operadores disponibles, compatibles y sin entrega activa; asignación, cotización y estados para el cliente; aceptación del precio y cancelación para el operador asignado. El índice de destinatario/pedido/evento impide duplicados y las actualizaciones de GPS no generan avisos. La migración no crea eventos históricos. La restauración desactiva el trigger mediante `SET LOCAL aquapaz.restoring='on'` y restaura el historial sin reenviar push de respaldos.
+
+- `GET /api/notificaciones`: últimos 200 avisos propios, con `pedido_id`, `destinatario`, `evento` y `titulo`. No expone tokens ni metadatos de entrega push.
+- `PUT /api/notificaciones/:id/leida` y `DELETE /api/notificaciones/:id`: acciones restringidas al destinatario.
+- `GET /api/pipas/pedidos/:id`: datos del pedido solo para el cliente u operador asignado. Una solicitud aún disponible muestra únicamente id, colonia, volumen, fecha y estado al operador elegible.
+- `POST /api/auth/push-token`: registra un token Expo válido para la cuenta autenticada y desvincula ese dispositivo de otras cuentas de forma atómica. Un dispositivo activo por cuenta.
+- `DELETE /api/auth/push-token`: elimina solo el token enviado y perteneciente a esa cuenta; no elimina un token posterior distinto.
+
+La API consulta la cola cada 15 segundos, reclama hasta cinco filas con bloqueo y lease para evitar envíos concurrentes y usa el servicio push de Expo con timeout. Reintenta errores temporales con espera creciente; consulta recibos 15 minutos después y limpia `DeviceNotRegistered` sin afectar un token de reemplazo. Un ticket aceptado no se presenta como entrega confirmada. Sin token o después de una hora el evento permanece en el historial pero no se envía. Un timeout después de la aceptación remota puede provocar un push repetido; la bandeja conserva un solo evento. Si el proyecto activa seguridad push, configura `EXPO_ACCESS_TOKEN` en Railway (nunca en la app).
+
+Se necesitan credenciales APNs/FCM y una compilación de desarrollo para validar la entrega física. Las pruebas usan un transporte simulado y esquemas PostgreSQL aislados; no envían push reales ni crean pedidos de producción.
 
 ## Ubicación GPS de pipas
 

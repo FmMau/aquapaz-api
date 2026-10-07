@@ -3,7 +3,8 @@ const pool = require('../database/db');
 router.use(require('../middlewares/auth.middleware'));
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM notificaciones WHERE usuario_id = $1 ORDER BY fecha DESC', [req.user.id]);
+    const result = await pool.query(`SELECT id,mensaje,tipo,leido,confirmada,to_char(fecha, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS fecha,pedido_id,evento,destinatario,titulo
+      FROM notificaciones WHERE usuario_id = $1 ORDER BY id DESC LIMIT 200`, [req.user.id]);
     res.json(result.rows);
   } catch (error) { fail(res, error); }
 });
@@ -12,7 +13,8 @@ for (const [action, assignment] of [['leida', 'leido = true'], ['confirmar', 'co
   router.put(`/:id/${action}`, async (req, res) => {
     if (!validId(req.params.id)) return res.status(400).json({ error: 'ID inválido' });
     try {
-      const result = await pool.query(`UPDATE notificaciones SET ${assignment} WHERE id = $1 AND usuario_id = $2 RETURNING id`, [req.params.id, req.user.id]);
+      const result = await pool.query(`UPDATE notificaciones SET ${assignment} WHERE id = $1 AND usuario_id = $2
+        ${action === 'confirmar' ? "AND tipo <> 'pipa'" : ''} RETURNING id`, [req.params.id, req.user.id]);
       if (!result.rows.length) return res.status(404).json({ error: 'Notificación no encontrada' });
       res.json({ success: true });
     } catch (error) { fail(res, error); }
