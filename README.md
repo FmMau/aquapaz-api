@@ -54,6 +54,16 @@ Run the PostgreSQL integration test with RUN_DB_TESTS=1 and `node --test tests/m
 - `POST /pedidos/:id/aceptar-precio`: el cliente confirma la `version` y el `precio_centavos` exactos que revisó. Un precio desactualizado no puede aceptarse. Tras aceptarlo se bloquean cambios de importe y condiciones.
 - `POST /pedidos/:id/rechazar-precio`: el cliente rechaza la `version` vigente y cancela el pedido antes del viaje, conservando la cotización en el historial. Puede crear otra solicitud.
 
-El viaje no puede iniciarse hasta que el cliente acepte el precio; la restricción se aplica en la API, también a versiones anteriores de la app. Importes en centavos enteros de MXN y estimaciones del operador, sin cargos automáticos. El registro de operadores es directo; no acredita verificación de proveedores. GPS en vivo, cobros y push de pedidos quedan pendientes. La app consulta estados mientras está visible. Los respaldos y `migrate:fresh` incluyen las tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
+El viaje no puede iniciarse hasta que el cliente acepte el precio; la restricción se aplica en la API, también a versiones anteriores de la app. Importes en centavos enteros de MXN y estimaciones del operador, sin cargos automáticos. El registro de operadores es directo; no acredita verificación de proveedores. GPS en segundo plano, cobros y push de pedidos quedan pendientes. La app consulta estados mientras está visible. Los respaldos y `migrate:fresh` incluyen las tablas; **no se ejecuta fresh para activar este módulo**. La restauración sigue aceptando respaldos anteriores sin tablas de pipas.
+
+## Ubicación GPS de pipas
+
+`004_pipas_ubicacion.sql` agrega columnas opcionales sin borrar registros. Solo se conserva la última posición del pedido, no un historial de recorridos.
+
+- `PUT /api/pipas/pedidos/:id/ubicacion`: solo el operador asignado envía `latitud`, `longitud`, `precision` (metros, opcional) y `observada_en` (timestamp GPS en milisegundos) durante `en_camino` o `en_sitio`. Acepta muestras de hasta 120 segundos y 30 segundos de tolerancia futura; una muestra fuera de orden no reemplaza una más nueva.
+- `GET /api/pipas/pedidos/:id/ubicacion`: solo el cliente del pedido y su operador pueden leer la posición. Incluye hora del servidor, estado y fecha real de medición.
+- `DELETE /api/pipas/pedidos/:id/ubicacion`: el operador limpia la última posición al detener la publicación. Al completar la entrega la API elimina esos datos y bloquea nuevos envíos.
+
+El GPS funciona con consentimiento del operador y la app activa. El cliente consulta cada 10 segundos y marca como antiguas las posiciones con más de 45 segundos, también cuando falla la red. No se encolan coordenadas offline.
 
 Las pruebas PostgreSQL optativas (`RUN_DB_TESTS=1 npm test`) crean un esquema aislado dentro de una transacción y lo revierten; no crean operadores ni pedidos reales.

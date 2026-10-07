@@ -127,7 +127,12 @@ router.put('/pedidos/:id/estado', async (req, res) => {
   const estado = req.body?.estado;
   if (!validId(req.params.id) || !Object.hasOwn(previous, estado)) return res.status(400).json({ error: 'Cambio de estado inválido' });
   try {
-    const result = await pool.query(`UPDATE pedidos_pipa SET estado=$1,actualizado=NOW()
+    const result = await pool.query(`UPDATE pedidos_pipa SET estado=$1,actualizado=NOW(),
+      pipa_latitud=CASE WHEN $1='completada' THEN NULL ELSE pipa_latitud END,
+      pipa_longitud=CASE WHEN $1='completada' THEN NULL ELSE pipa_longitud END,
+      pipa_precision=CASE WHEN $1='completada' THEN NULL ELSE pipa_precision END,
+      pipa_observada_en=CASE WHEN $1='completada' THEN NULL ELSE pipa_observada_en END,
+      pipa_recibida_en=CASE WHEN $1='completada' THEN NULL ELSE pipa_recibida_en END
       WHERE id=$2 AND estado=$3 AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$4)
         AND ($1 <> 'en_camino' OR (precio_centavos IS NOT NULL AND precio_aceptado_en IS NOT NULL)) RETURNING *`,
     [estado, req.params.id, previous[estado], req.user.id]);
@@ -185,6 +190,55 @@ router.post('/pedidos/:id/rechazar-precio', async (req, res) => {
         AND cotizacion_version=$3 AND precio_centavos IS NOT NULL RETURNING *`, [req.params.id, req.user.id, b.version]);
     if (!result.rows.length) return res.status(409).json({ error: 'La cotización cambió o ya fue aceptada. Actualiza su estado.' });
     res.json(result.rows[0]);
+  } catch (error) { fail(res, error); }
+});
+function locationResponse(order, accepted) {
+  const visible = ['en_camino', 'en_sitio'].includes(order.estado) && order.pipa_latitud != null && order.pipa_longitud != null;
+  return { estado: order.estado, hora_servidor: new Date().toISOString(), ...(accepted === undefined ? {} : { aceptada: accepted }),
+    ubicacion: visible ? { latitud: order.pipa_latitud, longitud: order.pipa_longitud, precision: order.pipa_precision,
+      observada_en: order.pipa_observada_en, recibida_en: order.pipa_recibida_en } : null };
+}
+router.get('/pedidos/:id/ubicacion', async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Pedido inválido' });
+  try {
+    const result = await pool.query(`SELECT estado,pipa_latitud,pipa_longitud,pipa_precision,pipa_observada_en,pipa_recibida_en
+      FROM pedidos_pipa WHERE id=$1 AND (usuario_id=$2 OR operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$2))`,
+    [req.params.id, req.user.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Pedido no disponible' });
+    res.json(locationResponse(result.rows[0]));
+  } catch (error) { fail(res, error); }
+});
+router.put('/pedidos/:id/ubicacion', async (req, res) => {
+  const b = req.body || {};
+  const now = Date.now();
+  if (!validId(req.params.id) || typeof b.latitud !== 'number' || !Number.isFinite(b.latitud) || Math.abs(b.latitud) > 90
+    || typeof b.longitud !== 'number' || !Number.isFinite(b.longitud) || Math.abs(b.longitud) > 180
+    || (b.precision != null && (typeof b.precision !== 'number' || !Number.isFinite(b.precision) || b.precision < 0 || b.precision > 10000))
+    || !Number.isSafeInteger(b.observada_en) || b.observada_en < now - 120000 || b.observada_en > now + 30000) {
+    return res.status(400).json({ error: 'Ubicación inválida o antigua. Revisa el GPS y la hora de tu teléfono.' });
+  }
+  try {
+    const result = await pool.query(`UPDATE pedidos_pipa SET pipa_latitud=$1,pipa_longitud=$2,pipa_precision=$3,
+      pipa_observada_en=$4::timestamptz,pipa_recibida_en=NOW()
+      WHERE id=$5 AND estado IN ('en_camino','en_sitio')
+        AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$6)
+        AND (pipa_observada_en IS NULL OR pipa_observada_en < $4::timestamptz) RETURNING *`,
+    [b.latitud, b.longitud, b.precision ?? null, new Date(b.observada_en).toISOString(), req.params.id, req.user.id]);
+    if (result.rows.length) return res.json(locationResponse(result.rows[0], true));
+    const current = (await pool.query(`SELECT * FROM pedidos_pipa WHERE id=$1 AND estado IN ('en_camino','en_sitio')
+      AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$2)`, [req.params.id, req.user.id])).rows[0];
+    if (!current) return res.status(409).json({ error: 'Solo el operador asignado puede compartir ubicación durante la entrega.' });
+    res.json(locationResponse(current, false));
+  } catch (error) { fail(res, error); }
+});
+router.delete('/pedidos/:id/ubicacion', async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'Pedido inválido' });
+  try {
+    const result = await pool.query(`UPDATE pedidos_pipa SET pipa_latitud=NULL,pipa_longitud=NULL,pipa_precision=NULL,
+      pipa_observada_en=NULL,pipa_recibida_en=NULL WHERE id=$1
+      AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$2) RETURNING estado`, [req.params.id, req.user.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Pedido no disponible' });
+    res.json(locationResponse(result.rows[0]));
   } catch (error) { fail(res, error); }
 });
 module.exports = router;

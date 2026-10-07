@@ -6,7 +6,7 @@ const vm = require('node:vm');
 function load(pool) {
   const routes = new Map(); const middleware = [];
   const router = { use: handler => middleware.push(handler) };
-  for (const method of ['get', 'post', 'put']) router[method] = (url, handler) => routes.set(`${method} ${url}`, handler);
+  for (const method of ['get', 'post', 'put', 'delete']) router[method] = (url, handler) => routes.set(`${method} ${url}`, handler);
   const auth = () => {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/routes/pipas.routes.js'), 'utf8'), {
     module: { exports: {} }, console,
@@ -93,6 +93,7 @@ test('PostgreSQL enforces one active order per customer and operator through the
     await client.query('INSERT INTO usuarios VALUES (7),(8),(9),(10)');
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/002_pipas.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/003_pipas_cotizaciones.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../migrations/004_pipas_ubicacion.sql'), 'utf8'));
     let result = await invoke('post /pedidos', 7, payload); assert.equal(result.statusCode, 201);
     result = await invoke('post /pedidos', 7, payload); assert.equal(result.body.id, 1);
     // Recover a constraint failure within the isolated outer test transaction.
@@ -124,9 +125,23 @@ test('PostgreSQL enforces one active order per customer and operator through the
     assert.equal(result.body.precio_aceptado_en.getTime(), acceptedAt);
     result = await invoke('put /pedidos/:id/cotizacion', 8, { ...quote, version: 2, precio_centavos: 140000 }); assert.equal(result.statusCode, 409);
     result = await invoke('put /pedidos/:id/estado', 8, { estado: 'en_camino' }); assert.equal(result.body.estado, 'en_camino');
+    const sample = { latitud: 24.12, longitud: -110.32, precision: 8, observada_en: Date.now() };
+    result = await invoke('put /pedidos/:id/ubicacion', 9, sample); assert.equal(result.statusCode, 409);
+    result = await invoke('put /pedidos/:id/ubicacion', 8, sample); assert.equal(result.body.aceptada, true);
+    result = await invoke('get /pedidos/:id/ubicacion', 7); assert.equal(result.body.ubicacion.latitud, 24.12);
+    result = await invoke('get /pedidos/:id/ubicacion', 9); assert.equal(result.statusCode, 404);
+    result = await invoke('get /pedidos/:id/ubicacion', 10); assert.equal(result.statusCode, 404);
+    result = await invoke('put /pedidos/:id/ubicacion', 8, { ...sample, observada_en: sample.observada_en - 1000, latitud: 24.11 });
+    assert.equal(result.body.aceptada, false); assert.equal(result.body.ubicacion.latitud, 24.12);
+    result = await invoke('delete /pedidos/:id/ubicacion', 7); assert.equal(result.statusCode, 404);
+    result = await invoke('delete /pedidos/:id/ubicacion', 8); assert.equal(result.body.ubicacion, null);
+    result = await invoke('put /pedidos/:id/ubicacion', 8, { ...sample, observada_en: Date.now() }); assert.equal(result.body.aceptada, true);
     result = await invoke('post /pedidos/:id/cancelar', 7); assert.equal(result.statusCode, 409);
     result = await invoke('put /pedidos/:id/estado', 8, { estado: 'en_sitio' }); assert.equal(result.body.estado, 'en_sitio');
     result = await invoke('put /pedidos/:id/estado', 8, { estado: 'completada' }); assert.equal(result.body.estado, 'completada');
+    assert.equal(result.body.pipa_latitud, null); assert.equal(result.body.pipa_observada_en, null);
+    result = await invoke('put /pedidos/:id/ubicacion', 8, { ...sample, observada_en: Date.now() }); assert.equal(result.statusCode, 409);
+    result = await invoke('get /pedidos/:id/ubicacion', 7); assert.equal(result.body.ubicacion, null);
     result = await invoke('post /pedidos', 7, { ...payload, client_id: 'next-stable-key' }); assert.equal(result.statusCode, 201);
     result = await invoke('post /pedidos/:id/aceptar', 8, undefined, String(result.body.id)); assert.equal(result.body.estado, 'asignada');
     result = await invoke('post /pedidos', 10, { ...payload, client_id: 'different-user-key' }); assert.equal(result.statusCode, 201);
@@ -138,6 +153,14 @@ test('PostgreSQL enforces one active order per customer and operator through the
     result = await invoke('post /pedidos/:id/rechazar-precio', 7, { version: 1 }, String(current)); assert.equal(result.body.estado, 'cancelada');
     assert.equal(result.body.precio_centavos, 120050); assert.equal(result.body.precio_aceptado_en, null);
   } finally { await client.query('ROLLBACK').catch(() => {}); await client.end(); }
+});
+
+test('GPS validation rejects invalid, old or future coordinates before database access', async () => {
+  const app = load({ query: () => assert.fail('Must not query') });
+  const sample = { latitud: 24.12, longitud: -110.32, observada_en: Date.now(), precision: 10 };
+  for (const invalid of [{ latitud: null }, { longitud: 181 }, { precision: -1 }, { precision: 10001 }, { observada_en: Date.now() - 130000 }, { observada_en: Date.now() + 60000 }, { observada_en: '2026-10-07' }]) {
+    const res = response(); await app.routes.get('put /pedidos/:id/ubicacion')(request({ ...sample, ...invalid }), res); assert.equal(res.statusCode, 400);
+  }
 });
 
 test('invalid quote money, version and ETA are rejected before touching the database', async () => {
