@@ -4,10 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { tables } = require('../scripts/database-tools');
-async function restore(order) {
+async function restore(order, table = 'pedidos_pipa', legacy = false) {
   const inserts = [];
   const snapshot = { format: 'aquapaz-data-v1', tables: Object.fromEntries(tables.map(table => [table, []])), sequences: {} };
-  snapshot.tables.pedidos_pipa = [order];
+  snapshot.tables[table] = [order];
+  if (legacy) { delete snapshot.tables.gestion_roles; delete snapshot.tables.reporte_atenciones; }
   const client = { query: async (sql, values) => {
     if (sql.startsWith('SELECT COUNT')) return { rows: [{ total: 0 }] };
     if (sql.startsWith('INSERT')) inserts.push(JSON.parse(values[0]));
@@ -36,4 +37,16 @@ test('restoring a current pipa backup preserves accepted price and quote version
   const row = await restore({ id: 1, precio_centavos: 120050, cotizacion_version: 2, cotizacion_notas: 'Incluye traslado', precio_aceptado_en: '2026-10-07T10:00:00Z' });
   assert.equal(row.precio_centavos, 120050); assert.equal(row.cotizacion_version, 2);
   assert.equal(row.cotizacion_notas, 'Incluye traslado'); assert.equal(row.precio_aceptado_en, '2026-10-07T10:00:00Z');
+});
+
+test('old backups restore reports with management defaults and no staff grants', async () => {
+  const row = await restore({ id: 1, colonia: 'Centro' }, 'reportes', true);
+  assert.equal(row.estado_atencion, 'nuevo'); assert.equal(row.responsable_id, null);
+  assert.equal(row.version_atencion, 0); assert.ok(Number.isFinite(Date.parse(row.atencion_actualizada_en)));
+});
+
+test('current backups preserve report assignment, state and version', async () => {
+  const row = await restore({ id: 1, estado_atencion: 'en_atencion', responsable_id: 7, version_atencion: 3, atencion_actualizada_en: '2026-10-27T10:00:00Z' }, 'reportes');
+  assert.equal(row.estado_atencion, 'en_atencion'); assert.equal(row.responsable_id, 7);
+  assert.equal(row.version_atencion, 3); assert.equal(row.atencion_actualizada_en, '2026-10-27T10:00:00Z');
 });
