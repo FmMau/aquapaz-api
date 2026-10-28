@@ -44,7 +44,11 @@ test('management authorization, filtering, transitions, conflicts and audit run 
       return { status: response.status, body: await response.json() };
     };
     assert.equal((await fetch(base)).status,401);
-    for (const route of ['', '/contexto', '/1']) assert.equal((await call(1,route)).status,403);
+    for (const route of ['', '/contexto', '/resumen', '/1']) assert.equal((await call(1,route)).status,403);
+    let summary = (await call(4, '/resumen')).body;
+    assert.equal(summary.resumen.pendientes, 2); assert.equal(summary.resumen.sin_responsable, 2);
+    assert.equal(summary.resumen.en_atencion, 0); assert.equal(summary.pendientes[0].id, 2);
+    assert.deepEqual(summary.en_atencion, []);
     const ctx = await call(4,'/contexto');
     assert.equal(ctx.body.permisos.gestionar,false);
     assert.deepEqual(ctx.body.responsables.map(r=>r.id),[2,3]);
@@ -58,7 +62,7 @@ test('management authorization, filtering, transitions, conflicts and audit run 
     assert.equal((await call(2,'?q=%27%20OR%201%3D1--')).body.resumen.total,0);
     assert.equal((await call(2,'?q=%25')).body.resumen.total,0);
     assert.equal((await call(2,'?limite=1&pagina=2')).body.reportes[0].id,2);
-    for (const q of ['estado_atencion=invalid','desde=2026-02-30','desde=2026-10-28&hasta=2026-10-27','limite=101','q[x]=bad','responsable_id=0','pagina=1.5','unknown=1']) assert.equal((await call(2,'?'+q)).status,400,q);
+    for (const q of ['pendientes=false','pendientes[x]=true','estado_atencion=invalid','desde=2026-02-30','desde=2026-10-28&hasta=2026-10-27','limite=101','q[x]=bad','responsable_id=0','pagina=1.5','unknown=1']) assert.equal((await call(2,'?'+q)).status,400,q);
     assert.equal((await call(2,'/abc')).status,400);
     assert.equal((await call(2,'/99')).status,404);
     for (const patch of [{responsable_id:1},{nota:' '},{version:-1},{actor_id:999},{estado_atencion:'resuelto'}]) assert.equal((await call(2,'/1/atencion','PUT',{...update,...patch})).status,400);
@@ -72,6 +76,9 @@ test('management authorization, filtering, transitions, conflicts and audit run 
     assert.equal((await call(2,'/1/atencion','PUT',{...update,version:1,estado_atencion:'en_atencion',responsable_id:null})).status,400);
     result = await call(3,'/1/atencion','PUT',{...update,version:1,estado_atencion:'en_atencion',responsable_id:3});
     assert.equal(result.status,200);
+    summary = (await call(2, '/resumen')).body;
+    assert.equal(summary.resumen.en_atencion, 1); assert.equal(summary.en_atencion[0].id, 1);
+    assert.equal(summary.en_atencion[0].responsable_nombre, 'Gestor B');
     result = await call(3,'/1/atencion','PUT',{...update,version:2,estado_atencion:'resuelto',responsable_id:3,nota:'Servicio restablecido'});
     assert.equal(result.status,200);
     assert.equal((await call(2,'?estado_atencion=resuelto&responsable_id=3')).body.resumen.total,1);
@@ -79,6 +86,11 @@ test('management authorization, filtering, transitions, conflicts and audit run 
     result = await call(2,'/1/atencion','PUT',{...update,version:3,nota:'Se reabre por nueva evidencia'});
     assert.equal(result.status,200);
     assert.equal((await call(2,'/2/atencion','PUT',{...update,estado_atencion:'descartado',nota:'Reporte duplicado'})).status,200);
+    summary = (await call(2, '/resumen')).body;
+    assert.equal(summary.resumen.pendientes, 1); assert.equal(summary.resumen.sin_responsable, 0);
+    assert.equal(summary.resumen.descartados, 1);
+    assert.equal((await call(2,'?pendientes=true&responsable_id=sin_asignar')).body.resumen.total,0);
+    assert.equal((await call(2,'?pendientes=true')).body.resumen.total,1);
     const before = (await call(2,'/1')).body;
     failHistory = true;
     assert.equal((await call(2,'/1/atencion','PUT',{...update,version:4,nota:'No debe persistir'})).status,503);

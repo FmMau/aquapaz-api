@@ -39,12 +39,36 @@ router.get('/contexto', async (req, res) => {
   } catch (error) { fail(res, error); }
 });
 
+router.get('/resumen', async (req, res) => {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const counts = await client.query(`SELECT COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE estado_atencion IN ('nuevo','en_revision','en_atencion'))::int AS pendientes,
+      COUNT(*) FILTER (WHERE estado_atencion IN ('nuevo','en_revision','en_atencion') AND responsable_id IS NULL)::int AS sin_responsable,
+      COUNT(*) FILTER (WHERE estado_atencion = 'nuevo')::int AS nuevos,
+      COUNT(*) FILTER (WHERE estado_atencion = 'en_revision')::int AS en_revision,
+      COUNT(*) FILTER (WHERE estado_atencion = 'en_atencion')::int AS en_atencion,
+      COUNT(*) FILTER (WHERE estado_atencion = 'resuelto')::int AS resueltos,
+      COUNT(*) FILTER (WHERE estado_atencion = 'descartado')::int AS descartados FROM reportes`);
+    const pending = await client.query(`SELECT ${fields} ${join}
+      WHERE r.estado_atencion IN ('nuevo','en_revision','en_atencion')
+      ORDER BY (r.responsable_id IS NULL) DESC, r.fecha ASC, r.id ASC LIMIT 5`);
+    const active = await client.query(`SELECT ${fields} ${join}
+      WHERE r.estado_atencion = 'en_atencion' ORDER BY r.fecha ASC, r.id ASC LIMIT 5`);
+    await client.query('COMMIT');
+    res.json({ resumen: counts.rows[0], pendientes: pending.rows, en_atencion: active.rows, actualizado: new Date().toISOString() });
+  } catch (error) { if (client) await client.query('ROLLBACK').catch(() => {}); fail(res, error); }
+  finally { client?.release(); }
+});
+
 router.get('/', async (req, res) => {
   const query = req.query;
   const values = [], conditions = [];
   const add = (sql, value) => { values.push(value); conditions.push(sql.replace('?', `$${values.length}`)); };
   const invalid = () => res.status(400).json({ error: 'Filtros inválidos.' });
-  const allowed = ['q', 'colonia', 'tipo', 'estado_atencion', 'responsable_id', 'desde', 'hasta', 'pagina', 'limite'];
+  const allowed = ['q', 'colonia', 'tipo', 'estado_atencion', 'responsable_id', 'desde', 'hasta', 'pagina', 'limite', 'pendientes'];
   if (Object.keys(query).some(key => !allowed.includes(key)) || Object.values(query).some(value => typeof value !== 'string')) return invalid();
   if (query.q) {
     if (query.q.length > 100) return invalid();
@@ -54,6 +78,10 @@ router.get('/', async (req, res) => {
   if (query.colonia) { if (query.colonia.length > 100) return invalid(); add('r.colonia = ?', query.colonia); }
   if (query.tipo) { if (!['agua', 'fuga'].includes(query.tipo)) return invalid(); add('r.tipo = ?', query.tipo); }
   if (query.estado_atencion) { if (!states.includes(query.estado_atencion)) return invalid(); add('r.estado_atencion = ?', query.estado_atencion); }
+  if (query.pendientes !== undefined) {
+    if (query.pendientes !== 'true') return invalid();
+    conditions.push("r.estado_atencion IN ('nuevo','en_revision','en_atencion')");
+  }
   if (query.responsable_id === 'sin_asignar') conditions.push('r.responsable_id IS NULL');
   else if (query.responsable_id) { if (!validId(query.responsable_id)) return invalid(); add('r.responsable_id = ?', Number(query.responsable_id)); }
   for (const name of ['desde', 'hasta']) {
