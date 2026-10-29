@@ -20,6 +20,7 @@ app.use('/api/auth/perfil', require('./routes/profile.routes'));
 app.use('/api/notificaciones', notificacionesRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/gestion/reportes', require('./routes/gestion-reportes.routes'));
+app.use('/api/gestion/pipas', require('./routes/gestion-pipas.routes'));
 app.use('/api/pipas', require('./routes/pipas.routes'));
 
 app.get('/', (req, res) => {

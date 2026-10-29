@@ -10,7 +10,11 @@ const { tables } = require('./database-tools');
     if (!file) throw Object.assign(new Error(), { code: 'BACKUP_PATH_REQUIRED' });
     const snapshot = JSON.parse(fs.readFileSync(file, 'utf8'));
     // Older backups predate the Pipas module and have no rows in its tables.
-    for (const table of ['operadores_pipa', 'pedidos_pipa', 'auth_identities', 'auth_resets', 'auth_flows', 'auth_tickets', 'auth_limits', 'gestion_roles', 'reporte_atenciones']) {
+    for (const table of [
+      'operadores_pipa', 'pedidos_pipa',
+      'auth_identities', 'auth_resets', 'auth_flows', 'auth_tickets', 'auth_limits',
+      'gestion_roles', 'reporte_atenciones', 'pipa_gestion_historial',
+    ]) {
       if (snapshot.tables && snapshot.tables[table] === undefined) snapshot.tables[table] = [];
     }
     if (snapshot.format !== 'aquapaz-data-v1' || !tables.every(table => Array.isArray(snapshot.tables?.[table]))) throw Object.assign(new Error(), { code: 'INVALID_BACKUP' });
@@ -20,7 +24,13 @@ const { tables } = require('./database-tools');
     await client.query("SET LOCAL lock_timeout = '5s'");
     await client.query('SET LOCAL search_path = public');
     await client.query("SET LOCAL aquapaz.restoring = 'on'");
-    await client.query('LOCK TABLE usuarios, reportes, confirmaciones, notificaciones, operadores_pipa, pedidos_pipa, auth_identities, auth_resets, auth_flows, auth_tickets, auth_limits, gestion_roles, reporte_atenciones IN ACCESS EXCLUSIVE MODE');
+    await client.query(`
+      LOCK TABLE usuarios, reportes, confirmaciones, notificaciones,
+        operadores_pipa, pedidos_pipa, auth_identities, auth_resets,
+        auth_flows, auth_tickets, auth_limits, gestion_roles,
+        reporte_atenciones, pipa_gestion_historial
+      IN ACCESS EXCLUSIVE MODE
+    `);
     for (const table of tables) {
       const count = await client.query(`SELECT COUNT(*)::int AS total FROM "${table}"`);
       if (count.rows[0].total !== 0) throw Object.assign(new Error(), { code: 'RESTORE_REQUIRES_EMPTY_TABLES' });
@@ -31,6 +41,7 @@ const { tables } = require('./database-tools');
         const record = table === 'pedidos_pipa' ? {
           ...row, cotizacion_version: row.cotizacion_version ?? 0,
           cotizacion_notas: row.cotizacion_notas ?? '',
+          gestion_version: row.gestion_version ?? 0,
         } : table === 'notificaciones' ? {
           ...row, push_estado: null, push_ticket: null, push_token_enviado: null,
           push_intentos: null, push_proximo: null, push_error: null,
