@@ -23,6 +23,7 @@ test('HTTP profile editing on PostgreSQL authenticates ownership and preserves u
     if (name === '../database/db') return client;
     if (name === '../middlewares/auth.middleware') return authContext.module.exports;
     if (name === '../data/colonias.json') return require('../src/data/colonias.json');
+    if (name === '../services/form-validation') return require('../src/services/form-validation');
     throw new Error(name);
   } };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/routes/profile.routes.js'), 'utf8'), routeContext);

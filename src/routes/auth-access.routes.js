@@ -12,7 +12,7 @@ const handle = (operation, minimumMs = 0) => async (req,res) => {
   res.set('Cache-Control','no-store');
   let body, status = 200;
   try { body = await operation(req.body); }
-  catch (error) { status = error.status || 503; body = { error:error.status ? error.message : 'No pudimos completar la solicitud. Vuelve a intentar.' }; }
+  catch (error) { status = error.status || 503; body = { error:error.status ? error.message : 'No pudimos completar la solicitud. Vuelve a intentar.',...(error.status&&error.fields?{fields:error.fields}:{}) }; }
   if (minimumMs) await new Promise(resolve => setTimeout(resolve, Math.max(0, minimumMs - (Date.now() - started))));
   res.status(status).json(body);
 };

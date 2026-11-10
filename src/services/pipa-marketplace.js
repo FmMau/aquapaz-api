@@ -1,4 +1,7 @@
 const { error, validPoint, distance, tariff, createRouting } = require('./pipa-routing');
+const { quoteFieldErrors, deliveryFieldErrors } = require('./form-validation');
+const colonies = require('../data/colonias.json');
+const validationError = fields => Object.assign(error(400,'Revisa los campos marcados en el formulario.'),{fields});
 const active = "estado NOT IN ('completada','cancelada')";
 const geo = `ROUND((6371000*2*ASIN(SQRT(LEAST(1.0,
   POWER(SIN(RADIANS(o.posicion_latitud-$1::double precision)/2),2)+COS(RADIANS($1::double precision))*COS(RADIANS(o.posicion_latitud))*POWER(SIN(RADIANS(o.posicion_longitud-$2::double precision)/2),2)))))::numeric)::int`;
@@ -50,7 +53,8 @@ function createMarketplace({ pool, route = createRouting(), env = process.env })
   return {
     tick, candidates,
     async quote(userId, body) {
-      if (!Number.isSafeInteger(body?.litros) || body.litros<1 || body.litros>100000 || !validPoint(body)) throw error(400,'Indica de 1 a 100,000 litros enteros y un punto válido.');
+      const fields=quoteFieldErrors(body);
+      if(Object.keys(fields).length)throw validationError(fields);
       const nearest = (await candidates(pool,body,body.litros,userId))[0];
       if (!nearest) throw error(409,'No hay pipas cercanas con capacidad y GPS reciente. Intenta más tarde.');
       const operator = (await pool.query('SELECT posicion_latitud AS latitud,posicion_longitud AS longitud FROM operadores_pipa WHERE id=$1',[nearest.id])).rows[0];
@@ -64,6 +68,9 @@ function createMarketplace({ pool, route = createRouting(), env = process.env })
       return publicQuote(row);
     },
     async create(userId, body) {
+      const errors=deliveryFieldErrors(body,colonies);
+      if(!Number.isSafeInteger(body?.cotizacion_id)||body.cotizacion_id<1||body?.aceptar_cotizacion!==true)errors.cotizacion_id='Calcula y acepta una cotización vigente antes de solicitar.';
+      if(Object.keys(errors).length)throw validationError(errors);
       const text = (x,min,max) => typeof x==='string' && x.trim().length>=min && x.trim().length<=max;
       if (!text(body?.client_id,8,128) || !/^[A-Za-z0-9_-]+$/.test(body.client_id) || !text(body.colonia,2,100)
         || !text(body.direccion,5,300) || !text(body.referencias??'',0,500) || !text(body.telefono,10,20)
@@ -77,7 +84,7 @@ function createMarketplace({ pool, route = createRouting(), env = process.env })
         const matches = order => ['colonia','direccion','referencias','telefono','litros','latitud','longitud'].every(key=>order[key]===(typeof body[key]==='string'?body[key].trim():body[key]??'')) && order.mercado_cotizacion_id===body.cotizacion_id;
         if (existing) { if (!matches(existing)) throw error(409,'Este identificador ya se usó con otros datos.'); return existing; }
         const quote = (await db.query(`SELECT * FROM pipa_cotizaciones WHERE id=$1 AND usuario_id=$2 AND vence_en>NOW() FOR UPDATE`,[body.cotizacion_id,userId])).rows[0];
-        if (!quote || quote.litros!==body.litros || quote.latitud!==body.latitud || quote.longitud!==body.longitud) throw error(409,'La cotización venció o cambió el punto o la cantidad. Vuelve a cotizar.');
+        if (!quote || quote.litros!==body.litros || quote.latitud!==body.latitud || quote.longitud!==body.longitud) throw Object.assign(error(409,'La cotización venció o cambió el punto o la cantidad. Vuelve a cotizar.'),{fields:{cotizacion_id:'Vuelve a calcular la cotización para esta cantidad y ubicación.'}});
         return (await db.query(`INSERT INTO pedidos_pipa(usuario_id,client_id,colonia,direccion,referencias,telefono,litros,latitud,longitud,
           mercado_cotizacion_id,tarifa_detalle,precio_centavos,cotizacion_version,precio_aceptado_en,llegada_estimada_minutos,cotizacion_notas,busqueda_vence_en)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,1,NOW(),$13,$14,NOW()+INTERVAL '30 minutes') RETURNING *`,

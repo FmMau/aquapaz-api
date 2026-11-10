@@ -10,7 +10,7 @@ function load(pool) {
   const auth = () => {};
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../src/routes/pipas.routes.js'), 'utf8'), {
     module: { exports: {} }, console,
-    require: name => name === 'express' ? { Router: () => router } : name === '../database/db' ? pool : auth,
+    require: name => name === 'express' ? { Router: () => router } : name === '../database/db' ? pool : name==='../services/form-validation'?require('../src/services/form-validation'):name==='../data/colonias.json'?require('../src/data/colonias.json'):auth,
   });
   return { routes, middleware, auth };
 }
@@ -218,4 +218,11 @@ test('quote acceptance matches exact owner, quote version and total', async () =
   } });
   const res = response(); await app.routes.get('post /pedidos/:id/aceptar-precio')(request({ version: 3, precio_centavos: 120050 }), res);
   assert.equal(res.statusCode, 409);
+});
+
+test('operator registration returns every invalid field without writing a partial profile',async()=>{
+  const app=load({query:()=>assert.fail('Invalid operator must not reach SQL')});
+  const res=response();await app.routes.get('post /operador')(request({nombre:' ',placas:'',telefono:'123',capacidad:0}),res);
+  assert.equal(res.statusCode,400);
+  assert.deepEqual(Object.keys(res.body.fields).sort(),['capacidad','nombre','placas','telefono']);
 });

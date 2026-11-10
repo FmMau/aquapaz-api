@@ -8,7 +8,7 @@ function createRouter({ pool, auth, market = createMarketplace({ pool }) }) {
     res.set('Cache-Control','no-store');
     try { res.json(await operation(req)); }
     catch (failure) {
-      res.status(failure.status || (failure.code==='23505'?409:503)).json({error:failure.status?failure.message:failure.code==='23505'?'Ya existe una entrega activa. Actualiza tus pedidos.':'No pudimos completar la operación de pipas. Vuelve a intentar.'});
+      res.status(failure.status || (failure.code==='23505'?409:503)).json({error:failure.status?failure.message:failure.code==='23505'?'Ya existe una entrega activa. Actualiza tus pedidos.':'No pudimos completar la operación de pipas. Vuelve a intentar.',...(failure.status&&failure.fields?{fields:failure.fields}:{})});
     }
   };
   router.post('/cotizar',handle(async req=>{

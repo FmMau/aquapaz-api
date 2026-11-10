@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const pool = require('../database/db');
 const colonies = new Set(require('../data/colonias.json'));
+const { profileFieldErrors } = require('../services/form-validation');
 router.use(require('../middlewares/auth.middleware'));
 
 router.get('/', async (req, res) => {
@@ -16,15 +17,12 @@ router.get('/', async (req, res) => {
 router.put('/', async (req, res) => {
   const body = req.body;
   if (!body || Array.isArray(body) || Object.keys(body).some(key => !['nombre', 'telefono', 'colonia'].includes(key)) ||
-      !['nombre', 'telefono', 'colonia'].every(key => typeof body[key] === 'string')) {
+      typeof body !== 'object') {
     return res.status(400).json({ error: 'Envía nombre, teléfono y colonia' });
   }
+  const fields=profileFieldErrors(body,Array.from(colonies));
+  if(Object.keys(fields).length)return res.status(400).json({error:'Revisa los campos del perfil.',fields});
   const nombre = body.nombre.trim(), telefono = body.telefono.trim(), colonia = body.colonia.trim();
-  if (!nombre || nombre.length > 100 || /[\u0000-\u001f\u007f]/.test(nombre) ||
-      telefono.length > 20 || !/^\+?[\d ()-]+$/.test(telefono) || !/^\d{10,15}$/.test(telefono.replace(/\D/g, '')) ||
-      !colonies.has(colonia)) {
-    return res.status(400).json({ error: 'Revisa el nombre, el teléfono (10 a 15 dígitos) y la colonia del catálogo' });
-  }
   try {
     const result = await pool.query(
       'UPDATE usuarios SET nombre=$1, telefono=$2, colonia=$3 WHERE id=$4 RETURNING id, nombre, email, telefono, colonia',

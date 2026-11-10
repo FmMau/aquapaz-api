@@ -12,6 +12,7 @@ function load(pool) {
     if (name === '../database/db') return pool;
     if (name === '../middlewares/auth.middleware') return auth;
     if (name === '../data/colonias.json') return require('../src/data/colonias.json');
+    if (name === '../services/form-validation') return require('../src/services/form-validation');
     throw new Error(name);
   } });
   assert.equal(middleware[0], auth);
@@ -47,4 +48,9 @@ test('missing account and database outage have explicit errors without leaking d
     res = response(); await load({ query: async () => { throw new Error('secret connection string'); } }).get(method)(req, res);
     assert.equal(res.code, 503); assert.ok(!res.body.error.includes('secret'));
   }
+});
+
+test('profile validation returns specific field errors together',async()=>{
+  const res=response();await load({query:()=>assert.fail('Invalid profile must not reach SQL')}).get('put')(request({nombre:' ',telefono:'123',colonia:'Inventada'}),res);
+  assert.equal(res.code,400);assert.deepEqual(Object.keys(res.body.fields).sort(),['colonia','nombre','telefono']);
 });

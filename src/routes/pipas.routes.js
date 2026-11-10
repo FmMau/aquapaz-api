@@ -1,10 +1,12 @@
 const router = require('express').Router();
 const pool = require('../database/db');
+const { operatorFieldErrors, deliveryFieldErrors, validFormPhone, validFormText } = require('../services/form-validation');
+const colonyCatalog = require('../data/colonias.json');
 router.use(require('../middlewares/auth.middleware'));
 const validVolume = value => Number.isSafeInteger(value) && value>=1 && value<=100000;
 const validId = value => /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value));
-const text = (value, min, max) => typeof value === 'string' && value.trim().length >= min && value.trim().length <= max;
-const phone = value => typeof value === 'string' && /^[+\d ()-]{10,20}$/.test(value) && value.replace(/\D/g, '').length >= 10;
+const text = validFormText;
+const phone = validFormPhone;
 const active = "estado NOT IN ('completada','cancelada')";
 function fail(res, error) {
   console.error('Pipas failed:', error.code || error.name);
@@ -40,8 +42,10 @@ router.get('/pedidos/:id', async (req, res) => {
 
 router.post('/pedidos', async (req, res) => {
   const b = req.body || {};
+  const errors=deliveryFieldErrors(b,colonyCatalog);
+  if(Object.keys(errors).length)return res.status(400).json({error:'Revisa los campos de la solicitud.',fields:errors});
   if (!text(b.client_id, 8, 128) || !/^[a-zA-Z0-9_-]+$/.test(b.client_id) || !text(b.colonia, 2, 100)
-    || !text(b.direccion, 5, 300) || !text(b.referencias ?? '', 0, 500) || !phone(b.telefono)
+    || !text(b.direccion, 5, 300) || !text(b.referencias ?? '', 0, 500,true) || !phone(b.telefono)
     || !validVolume(b.litros) || typeof b.latitud !== 'number' || !Number.isFinite(b.latitud) || Math.abs(b.latitud) > 90
     || typeof b.longitud !== 'number' || !Number.isFinite(b.longitud) || Math.abs(b.longitud) > 180) {
     return res.status(400).json({ error: 'Revisa la dirección, teléfono, litros y punto de entrega.' });
@@ -85,9 +89,8 @@ router.get('/operador', async (req, res) => {
 
 router.post('/operador', async (req, res) => {
   const b = req.body || {};
-  if (!text(b.nombre, 3, 100) || !text(b.placas, 3, 20) || !phone(b.telefono) || !validVolume(b.capacidad)) {
-    return res.status(400).json({ error: 'Revisa el nombre de la pipa, placas, teléfono y capacidad.' });
-  }
+  const fields=operatorFieldErrors(b);
+  if(Object.keys(fields).length)return res.status(400).json({error:'Revisa los campos de la pipa.',fields});
   try {
     const result = await pool.query(`INSERT INTO operadores_pipa (usuario_id,nombre,placas,telefono,capacidad)
       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (usuario_id) DO NOTHING RETURNING *`,
@@ -162,11 +165,13 @@ router.put('/pedidos/:id/estado', async (req, res) => {
 
 router.put('/pedidos/:id/cotizacion', async (req, res) => {
   const b = req.body || {};
-  if (!validId(req.params.id) || !Number.isSafeInteger(b.precio_centavos) || b.precio_centavos < 1 || b.precio_centavos > 10000000
-    || !Number.isSafeInteger(b.version) || b.version < 0 || !text(b.notas ?? '', 0, 500)
-    || !Number.isInteger(b.llegada_estimada_minutos) || b.llegada_estimada_minutos < 1 || b.llegada_estimada_minutos > 1440) {
-    return res.status(400).json({ error: 'Indica un precio total válido, tiempo estimado entre 1 y 1440 minutos y notas de hasta 500 caracteres.' });
-  }
+  if(!validId(req.params.id))return res.status(400).json({error:'Pedido inválido.'});
+  const fields={};
+  if(!Number.isSafeInteger(b.precio_centavos)||b.precio_centavos<1||b.precio_centavos>10000000)fields.precio_centavos='Indica un precio entre $0.01 y $100,000 MXN.';
+  if(!Number.isSafeInteger(b.version)||b.version<0)fields.cotizacion_id='Actualiza el pedido antes de cotizar.';
+  if(!text(b.notas??'',0,500,true))fields.notas='Usa hasta 500 caracteres sin caracteres de control.';
+  if(!Number.isInteger(b.llegada_estimada_minutos)||b.llegada_estimada_minutos<1||b.llegada_estimada_minutos>1440)fields.llegada_estimada_minutos='El traslado debe estar entre 1 y 1440 minutos.';
+  if(Object.keys(fields).length)return res.status(400).json({error:'Revisa los campos de la cotización.',fields});
   const notas = (b.notas || '').trim();
   try {
     const result = await pool.query(`UPDATE pedidos_pipa SET precio_centavos=$1,llegada_estimada_minutos=$2,

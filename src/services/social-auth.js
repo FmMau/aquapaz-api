@@ -1,5 +1,7 @@
 const bcrypt = require('bcryptjs');
-const { email, validEmail, profileError, authError } = require('./auth-validation');
+const { email, validEmail, authError } = require('./auth-validation');
+const { profileFieldErrors } = require('./form-validation');
+const colonies = require('../data/colonias.json');
 const { random, digest, challenge, transaction, issueSession, emailLock } = require('./auth-security');
 const proof = body => typeof body?.code === 'string' && /^[A-Za-z0-9_-]{43}$/.test(body.code) && typeof body.code_verifier === 'string' && /^[A-Za-z0-9._~-]{43,128}$/.test(body.code_verifier);
 function createSocialAuth({ pool, provider }) {
@@ -51,13 +53,13 @@ function createSocialAuth({ pool, provider }) {
         const result = await account(client,ticket);
         let user = result.user;
         if (result.action === 'register') {
-          const invalid = profileError(body?.profile);
-          if (invalid) throw authError(400,invalid);
+          const invalid = profileFieldErrors(body?.profile,colonies);
+          if (Object.keys(invalid).length) throw authError(400,'Revisa los campos de tu perfil.',invalid);
           const { nombre, telefono, colonia } = body.profile;
           const inserted = await client.query(`INSERT INTO usuarios(nombre,email,telefono,colonia,password) VALUES($1,$2,$3,$4,NULL) RETURNING *`,[nombre.trim(),ticket.email,telefono.trim(),colonia.trim()]);
           user = inserted.rows[0];
         } else if (result.action === 'link') {
-          if (!user.password || typeof body.password !== 'string' || Buffer.byteLength(body.password,'utf8') > 72 || !await bcrypt.compare(body.password,user.password)) throw authError(401,'Confirma la contraseña de tu cuenta existente para vincularla. Puedes recuperarla por correo.');
+          if (!user.password || typeof body.password !== 'string' || Buffer.byteLength(body.password,'utf8') > 72 || !await bcrypt.compare(body.password,user.password)) throw authError(401,'Confirma la contraseña de tu cuenta existente para vincularla. Puedes recuperarla por correo.',{password:'Confirma la contraseña de tu cuenta AquaPaz.'});
         }
         if (result.action !== 'login') await client.query('INSERT INTO auth_identities(provider,subject,usuario_id) VALUES($1,$2,$3)',[ticket.provider,ticket.subject,user.id]);
         await client.query('DELETE FROM auth_tickets WHERE id=$1',[ticket.id]);

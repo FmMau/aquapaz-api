@@ -1,7 +1,9 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('node:crypto');
-const { email, validEmail, validPassword, profileError, authError } = require('./auth-validation');
+const { email, validEmail, validPassword, authError } = require('./auth-validation');
 const { transaction, issueSession, emailLock, limit } = require('./auth-security');
+const { profileFieldErrors } = require('./form-validation');
+const colonies = require('../data/colonias.json');
 // Compare unknown accounts too; never reveal whether a login email is registered.
 const dummyHash = bcrypt.hashSync('unused-authentication-dummy-password', 10);
 const genericRecovery = { message: 'Si existe una cuenta con ese correo, recibirás un código para recuperar tu contraseña.' };
@@ -9,17 +11,17 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
   const hashCode = (address, code) => crypto.createHmac('sha256', env.JWT_SECRET).update(`password-reset:${address}:${code}`).digest('hex');
   return {
     async register(body) {
-      const error = profileError(body);
-      if (error) throw authError(400, error);
-      const address = email(body.email);
-      if (!validEmail(address)) throw authError(400, 'Escribe un correo válido de hasta 120 caracteres');
-      if (!validPassword(body.password)) throw authError(400, 'La contraseña necesita al menos 8 caracteres y un máximo de 72 bytes');
+      const fields=profileFieldErrors(body,colonies);
+      const address = email(body?.email);
+      if (!validEmail(address)) fields.email='Escribe un correo válido de hasta 120 caracteres.';
+      if (!validPassword(body?.password)) fields.password='La contraseña necesita al menos 8 caracteres y un máximo de 72 bytes.';
+      if(Object.keys(fields).length)throw authError(400,'Revisa los campos del registro.',fields);
       if (Object.keys(body).some(key => !['nombre','email','telefono','password','colonia'].includes(key))) throw authError(400, 'Campos de registro inválidos');
       const hash = await bcrypt.hash(body.password, 10);
       return transaction(pool, async client => {
         await emailLock(client, address);
         const existing = await client.query('SELECT id FROM usuarios WHERE lower(btrim(email))=$1', [address]);
-        if (existing.rows.length) throw authError(409, 'Ya existe una cuenta con ese correo. Inicia sesión o recupera tu contraseña.');
+        if (existing.rows.length) throw authError(409, 'Ya existe una cuenta con ese correo. Inicia sesión o recupera tu contraseña.',{email:'Ya existe una cuenta con este correo.'});
         const result = await client.query(`INSERT INTO usuarios(nombre,email,telefono,password,colonia) VALUES($1,$2,$3,$4,$5)
           RETURNING id,nombre,email,telefono,colonia,auth_version`, [body.nombre.trim(), address, body.telefono.trim(), hash, body.colonia.trim()]);
         return issueSession(result.rows[0]);
@@ -27,17 +29,20 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
     },
     async login(body) {
       const address = email(body?.email);
-      if (!validEmail(address) || typeof body?.password !== 'string' || !body.password || Buffer.byteLength(body.password,'utf8') > 72) throw authError(400, 'Revisa el correo y la contraseña');
+      const fields={};
+      if(!validEmail(address))fields.email='Escribe un correo válido de hasta 120 caracteres.';
+      if(typeof body?.password!=='string'||!body.password.trim()||Buffer.byteLength(body.password,'utf8')>72)fields.password='Escribe tu contraseña (máximo 72 bytes).';
+      if(Object.keys(fields).length)throw authError(400,'Revisa el correo y la contraseña.',fields);
       await limit(pool,'login-email',address,20,15);
       const result = await pool.query('SELECT id,nombre,email,telefono,colonia,password,auth_version FROM usuarios WHERE lower(btrim(email))=$1', [address]);
       const user = result.rows.length === 1 ? result.rows[0] : null;
       const valid = await bcrypt.compare(body.password, user?.password || dummyHash);
-      if (!user?.password || !valid) throw authError(401, 'Correo o contraseña incorrectos');
+      if (!user?.password || !valid) throw authError(401, 'Correo o contraseña incorrectos',{email:'Revisa el correo o la contraseña.',password:'Revisa el correo o la contraseña.'});
       return issueSession(user);
     },
     async forgot(body) {
       const address = email(body?.email);
-      if (!validEmail(address)) throw authError(400, 'Escribe un correo válido');
+      if (!validEmail(address)) throw authError(400, 'Escribe un correo válido',{email:'Escribe un correo válido.'});
       if (!mailer.ready()) throw authError(503, 'La recuperación por correo aún no está habilitada.');
       await limit(pool, 'recovery-email', address, 3, 60);
       const code = String(crypto.randomInt(0,100000000)).padStart(8,'0');
@@ -57,7 +62,11 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
     },
     async reset(body) {
       const address = email(body?.email);
-      if (!validEmail(address) || typeof body?.code !== 'string' || !/^\d{8}$/.test(body.code) || !validPassword(body?.password)) throw authError(400, 'Revisa el correo, el código de 8 dígitos y la nueva contraseña');
+      const fields={};
+      if(!validEmail(address))fields.email='Escribe un correo válido.';
+      if(typeof body?.code!=='string'||!/^\d{8}$/.test(body.code))fields.code='Escribe los 8 dígitos del código.';
+      if(!validPassword(body?.password))fields.password='Usa al menos 8 caracteres y hasta 72 bytes.';
+      if(Object.keys(fields).length)throw authError(400,'Revisa los campos de recuperación.',fields);
       const nextPassword = await bcrypt.hash(body.password,10);
       const success = await transaction(pool, async client => {
         const { rows } = await client.query(`SELECT r.*,r.expires_at>NOW() AS valid FROM auth_resets r JOIN usuarios u ON u.id=r.usuario_id
@@ -72,7 +81,7 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
         await client.query('DELETE FROM auth_resets WHERE id=$1',[row.id]);
         return true;
       });
-      if (!success) throw authError(400, 'El código no es válido, ya se utilizó o caducó. Solicita otro si es necesario.');
+      if (!success) throw authError(400, 'El código no es válido, ya se utilizó o caducó. Solicita otro si es necesario.',{code:'El código no es válido o caducó. Solicita otro.'});
       return { message: 'Contraseña actualizada. Inicia sesión con tu nueva contraseña.' };
     },
   };

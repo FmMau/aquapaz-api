@@ -15,5 +15,5 @@ const profileError = body => {
   return null;
 };
 const publicUser = user => ({ id: user.id, nombre: user.nombre, email: user.email, telefono: user.telefono, colonia: user.colonia });
-const authError = (status, message) => Object.assign(new Error(message), { status });
+const authError = (status, message, fields) => Object.assign(new Error(message), { status, ...(fields?{fields}:{}) });
 module.exports = { email, validEmail, validPassword, profileError, publicUser, authError };
