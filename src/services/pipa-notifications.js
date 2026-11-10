@@ -32,7 +32,7 @@ function createPushWorker({ pool, fetcher = fetch, accessToken = process.env.EXP
   async function send(row) {
     if (!validToken(row.push_token_enviado)) return finish(row, 'sin_dispositivo');
     const ticket = await expo('send', {
-      to: row.push_token_enviado, sound: 'default', title: row.titulo, body: row.mensaje, channelId: 'default', ttl: 3600,
+      to: row.push_token_enviado, sound: 'default', title: row.titulo, body: row.mensaje, channelId: 'default', ttl: row.evento?.startsWith('oferta:') ? 60 : 3600,
       data: { tipo: 'pipa', usuario_id: row.usuario_id, notificacion_id: row.id, pedido_id: row.pedido_id, destinatario: row.destinatario },
     });
     if (ticket?.status === 'ok' && typeof ticket.id === 'string') return finish(row, 'recibo', null, ticket.id, 900);
@@ -62,6 +62,13 @@ function createPushWorker({ pool, fetcher = fetch, accessToken = process.env.EXP
       FROM ready WHERE n.id=ready.id RETURNING n.*,EXTRACT(EPOCH FROM ((CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - n.fecha)) AS age_seconds`)).rows;
       for (const row of rows) {
         try {
+          if (row.push_estado !== 'recibo' && row.evento?.startsWith('oferta:')) {
+            const live = await pool.query(`SELECT f.id FROM pipa_ofertas f JOIN pedidos_pipa p ON p.id=f.pedido_id
+              JOIN operadores_pipa o ON o.id=f.operador_id WHERE f.pedido_id=$1 AND o.usuario_id=$2
+              AND f.estado='pendiente' AND f.vence_en>NOW() AND p.estado='solicitada' AND ('oferta:'||f.id)=$3`,
+            [row.pedido_id,row.usuario_id,row.evento]);
+            if (!live.rows.length) { await finish(row,'expirada'); continue; }
+          }
           if (row.push_estado !== 'recibo' && Number(row.age_seconds) > 3600) {
             await finish(row, 'expirada');
           } else if (row.push_estado === 'recibo') await receipt(row);

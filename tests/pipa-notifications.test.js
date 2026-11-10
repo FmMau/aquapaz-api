@@ -53,3 +53,10 @@ test('overlapping polls do not claim or send the same queue twice', async () => 
   await s.worker.tick(); assert.equal(s.claims, 1);
   finish(); await first;
 });
+
+test('expired timed offers remain in inbox but never send a late push',async()=>{
+  const s=setup([{...row,evento:'oferta:77',destinatario:'operador'}],()=>assert.fail('Expired offer must not send'));
+  await s.worker.tick();
+  assert.equal(s.requests.length,0);
+  assert.equal(s.updates.at(-1).params[0],'expirada');
+});

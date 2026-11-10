@@ -95,6 +95,7 @@ test('PostgreSQL enforces one active order per customer and operator through the
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/003_pipas_cotizaciones.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/004_pipas_ubicacion.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(__dirname, '../migrations/005_pipas_notificaciones.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '../migrations/010_pipas_mercado.sql'), 'utf8'));
     let result = await invoke('post /pedidos', 7, payload); assert.equal(result.statusCode, 201);
     result = await invoke('post /pedidos', 7, payload); assert.equal(result.body.id, 1);
     // Recover a constraint failure within the isolated outer test transaction.

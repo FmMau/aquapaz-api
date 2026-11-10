@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const pool = require('../database/db');
 router.use(require('../middlewares/auth.middleware'));
-const volumes = [5000, 10000, 20000];
+const validVolume = value => Number.isSafeInteger(value) && value>=1 && value<=100000;
 const validId = value => /^[1-9]\d*$/.test(String(value)) && Number.isSafeInteger(Number(value));
 const text = (value, min, max) => typeof value === 'string' && value.trim().length >= min && value.trim().length <= max;
 const phone = value => typeof value === 'string' && /^[+\d ()-]{10,20}$/.test(value) && value.replace(/\D/g, '').length >= 10;
@@ -42,7 +42,7 @@ router.post('/pedidos', async (req, res) => {
   const b = req.body || {};
   if (!text(b.client_id, 8, 128) || !/^[a-zA-Z0-9_-]+$/.test(b.client_id) || !text(b.colonia, 2, 100)
     || !text(b.direccion, 5, 300) || !text(b.referencias ?? '', 0, 500) || !phone(b.telefono)
-    || !volumes.includes(b.litros) || typeof b.latitud !== 'number' || !Number.isFinite(b.latitud) || Math.abs(b.latitud) > 90
+    || !validVolume(b.litros) || typeof b.latitud !== 'number' || !Number.isFinite(b.latitud) || Math.abs(b.latitud) > 90
     || typeof b.longitud !== 'number' || !Number.isFinite(b.longitud) || Math.abs(b.longitud) > 180) {
     return res.status(400).json({ error: 'Revisa la dirección, teléfono, litros y punto de entrega.' });
   }
@@ -85,7 +85,7 @@ router.get('/operador', async (req, res) => {
 
 router.post('/operador', async (req, res) => {
   const b = req.body || {};
-  if (!text(b.nombre, 3, 100) || !text(b.placas, 3, 20) || !phone(b.telefono) || !volumes.includes(b.capacidad)) {
+  if (!text(b.nombre, 3, 100) || !text(b.placas, 3, 20) || !phone(b.telefono) || !validVolume(b.capacidad)) {
     return res.status(400).json({ error: 'Revisa el nombre de la pipa, placas, teléfono y capacidad.' });
   }
   try {
@@ -100,7 +100,7 @@ router.post('/operador', async (req, res) => {
 router.put('/operador/disponibilidad', async (req, res) => {
   if (typeof req.body?.disponible !== 'boolean') return res.status(400).json({ error: 'Disponibilidad inválida' });
   try {
-    const result = await pool.query('UPDATE operadores_pipa SET disponible=$1 WHERE usuario_id=$2 RETURNING *', [req.body.disponible, req.user.id]);
+    const result = await pool.query('UPDATE operadores_pipa SET disponible=$1,posicion_latitud=NULL,posicion_longitud=NULL,posicion_en=NULL WHERE usuario_id=$2 RETURNING *', [req.body.disponible, req.user.id]);
     if (!result.rows.length) return res.status(403).json({ error: 'Registra tu pipa primero.' });
     res.json(result.rows[0]);
   } catch (error) { fail(res, error); }
@@ -113,7 +113,7 @@ router.get('/disponibles', async (req, res) => {
     if (!profile) return res.status(403).json({ error: 'Registra tu pipa primero.' });
     if (!profile.disponible) return res.json([]);
     res.json((await pool.query(`SELECT id,colonia,litros,fecha FROM pedidos_pipa
-      WHERE estado='solicitada' AND usuario_id<>$1 AND litros<=$2
+      WHERE estado='solicitada' AND mercado_cotizacion_id IS NULL AND usuario_id<>$1 AND litros<=$2
         AND NOT EXISTS (SELECT 1 FROM pedidos_pipa WHERE operador_id=$3 AND ${active})
       ORDER BY fecha LIMIT 30`, [req.user.id, profile.capacidad, profile.id])).rows);
   } catch (error) { fail(res, error); }
@@ -149,7 +149,9 @@ router.put('/pedidos/:id/estado', async (req, res) => {
       pipa_longitud=CASE WHEN $1='completada' THEN NULL ELSE pipa_longitud END,
       pipa_precision=CASE WHEN $1='completada' THEN NULL ELSE pipa_precision END,
       pipa_observada_en=CASE WHEN $1='completada' THEN NULL ELSE pipa_observada_en END,
-      pipa_recibida_en=CASE WHEN $1='completada' THEN NULL ELSE pipa_recibida_en END
+      pipa_recibida_en=CASE WHEN $1='completada' THEN NULL ELSE pipa_recibida_en END,
+      ruta_actual=CASE WHEN $1='completada' THEN NULL ELSE ruta_actual END,
+      ruta_calculada_en=CASE WHEN $1='completada' THEN NULL ELSE ruta_calculada_en END
       WHERE id=$2 AND estado=$3 AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$4)
         AND ($1 <> 'en_camino' OR (precio_centavos IS NOT NULL AND precio_aceptado_en IS NOT NULL)) RETURNING *`,
     [estado, req.params.id, previous[estado], req.user.id]);
@@ -252,7 +254,7 @@ router.delete('/pedidos/:id/ubicacion', async (req, res) => {
   if (!validId(req.params.id)) return res.status(400).json({ error: 'Pedido inválido' });
   try {
     const result = await pool.query(`UPDATE pedidos_pipa SET pipa_latitud=NULL,pipa_longitud=NULL,pipa_precision=NULL,
-      pipa_observada_en=NULL,pipa_recibida_en=NULL WHERE id=$1
+      pipa_observada_en=NULL,pipa_recibida_en=NULL,ruta_actual=NULL,ruta_calculada_en=NULL WHERE id=$1
       AND operador_id IN (SELECT id FROM operadores_pipa WHERE usuario_id=$2) RETURNING estado`, [req.params.id, req.user.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Pedido no disponible' });
     res.json(locationResponse(result.rows[0]));

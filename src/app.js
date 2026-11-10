@@ -22,6 +22,8 @@ app.use('/api/notificaciones', notificacionesRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/gestion/reportes', require('./routes/gestion-reportes.routes'));
 app.use('/api/gestion/pipas', require('./routes/gestion-pipas.routes'));
+const pipaMarket = require('./services/pipa-marketplace').createMarketplace({ pool:require('./database/db') });
+app.use('/api/pipas', require('./routes/pipa-market.routes').createRouter({ pool:require('./database/db'),auth:require('./middlewares/auth.middleware'),market:pipaMarket }));
 app.use('/api/pipas', require('./routes/pipas.routes'));
 
 app.get('/', (req, res) => {
@@ -36,6 +38,8 @@ const PORT = process.env.PORT || 3000;
 const pushWorker = require('./services/pipa-notifications').createPushWorker({ pool: require('./database/db') });
 const pushTimer = setInterval(() => { void pushWorker.tick(); }, 15000);
 pushTimer.unref();
+const dispatchTimer = setInterval(()=>{ void pipaMarket.tick().catch(error=>console.error('Pipa dispatch failed:',error.code||error.name)); },5000);
+dispatchTimer.unref();
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Servidor corriendo en puerto ${PORT}`);
@@ -52,6 +56,7 @@ process.on('unhandledRejection', (err) => {
 
 process.on('SIGTERM', () => {
   clearInterval(pushTimer);
+  clearInterval(dispatchTimer);
   server.close(() => {
     console.log('Servidor cerrado correctamente');
     process.exit(0);
