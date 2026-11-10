@@ -21,7 +21,7 @@ function quoteFieldErrors(body={}) {
 function deliveryFieldErrors(body={},colonies) {
   const errors=quoteFieldErrors(body);
   if(!validFormText(body?.direccion,5,300))errors.direccion='Escribe calle y número (de 5 a 300 caracteres).';
-  if(!validFormText(body?.referencias??'',0,500,true))errors.referencias='Las referencias admiten hasta 500 caracteres, sin caracteres de control.';
+  if(!validFormText(body?.referencias??'',0,500,true))errors.referencias='Las referencias admiten hasta 500 caracteres. Revisa que el texto no tenga símbolos no válidos.';
   if(!validFormText(body?.colonia,2,100)||(colonies&&!colonies.includes(body.colonia.trim())))errors.colonia='Selecciona una colonia válida en Mi perfil.';
   if(!validFormPhone(body?.telefono))errors.telefono='Guarda un teléfono de 10 a 15 dígitos en Mi perfil.';
   return errors;

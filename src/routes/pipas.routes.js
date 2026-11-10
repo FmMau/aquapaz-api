@@ -169,7 +169,7 @@ router.put('/pedidos/:id/cotizacion', async (req, res) => {
   const fields={};
   if(!Number.isSafeInteger(b.precio_centavos)||b.precio_centavos<1||b.precio_centavos>10000000)fields.precio_centavos='Indica un precio entre $0.01 y $100,000 MXN.';
   if(!Number.isSafeInteger(b.version)||b.version<0)fields.cotizacion_id='Actualiza el pedido antes de cotizar.';
-  if(!text(b.notas??'',0,500,true))fields.notas='Usa hasta 500 caracteres sin caracteres de control.';
+  if(!text(b.notas??'',0,500,true))fields.notas='Usa hasta 500 caracteres y revisa que no haya símbolos no válidos.';
   if(!Number.isInteger(b.llegada_estimada_minutos)||b.llegada_estimada_minutos<1||b.llegada_estimada_minutos>1440)fields.llegada_estimada_minutos='El traslado debe estar entre 1 y 1440 minutos.';
   if(Object.keys(fields).length)return res.status(400).json({error:'Revisa los campos de la cotización.',fields});
   const notas = (b.notas || '').trim();

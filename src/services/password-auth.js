@@ -14,7 +14,7 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
       const fields=profileFieldErrors(body,colonies);
       const address = email(body?.email);
       if (!validEmail(address)) fields.email='Escribe un correo válido de hasta 120 caracteres.';
-      if (!validPassword(body?.password)) fields.password='La contraseña necesita al menos 8 caracteres y un máximo de 72 bytes.';
+      if (!validPassword(body?.password)) fields.password='Usa una contraseña de al menos 8 caracteres. Si es demasiado larga, elige una más corta.';
       if(Object.keys(fields).length)throw authError(400,'Revisa los campos del registro.',fields);
       if (Object.keys(body).some(key => !['nombre','email','telefono','password','colonia'].includes(key))) throw authError(400, 'Campos de registro inválidos');
       const hash = await bcrypt.hash(body.password, 10);
@@ -31,7 +31,7 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
       const address = email(body?.email);
       const fields={};
       if(!validEmail(address))fields.email='Escribe un correo válido de hasta 120 caracteres.';
-      if(typeof body?.password!=='string'||!body.password.trim()||Buffer.byteLength(body.password,'utf8')>72)fields.password='Escribe tu contraseña (máximo 72 bytes).';
+      if(typeof body?.password!=='string'||!body.password.trim()||Buffer.byteLength(body.password,'utf8')>72)fields.password='Escribe tu contraseña. Si es demasiado larga, elige una más corta.';
       if(Object.keys(fields).length)throw authError(400,'Revisa el correo y la contraseña.',fields);
       await limit(pool,'login-email',address,20,15);
       const result = await pool.query('SELECT id,nombre,email,telefono,colonia,password,auth_version FROM usuarios WHERE lower(btrim(email))=$1', [address]);
@@ -65,7 +65,7 @@ function createPasswordAuth({ pool, mailer, env = process.env }) {
       const fields={};
       if(!validEmail(address))fields.email='Escribe un correo válido.';
       if(typeof body?.code!=='string'||!/^\d{8}$/.test(body.code))fields.code='Escribe los 8 dígitos del código.';
-      if(!validPassword(body?.password))fields.password='Usa al menos 8 caracteres y hasta 72 bytes.';
+      if(!validPassword(body?.password))fields.password='Usa una contraseña de al menos 8 caracteres. Si es demasiado larga, elige una más corta.';
       if(Object.keys(fields).length)throw authError(400,'Revisa los campos de recuperación.',fields);
       const nextPassword = await bcrypt.hash(body.password,10);
       const success = await transaction(pool, async client => {

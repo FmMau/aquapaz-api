@@ -9,7 +9,7 @@ function tariff(litros, metros, env = process.env) {
   const demo = env.PIPA_TARIFA_MODO !== 'real';
   const read = (key, fallback) => {
     const raw = env[key] ?? (demo ? String(fallback) : '');
-    if (!/^\d{1,8}$/.test(raw)) throw error(503, 'Falta configurar la tarifa de pipas.');
+    if (!/^\d{1,8}$/.test(raw)) throw error(503, 'No podemos calcular el precio por ahora. Vuelve a intentar más tarde.');
     return Number(raw);
   };
   const base = read('PIPA_BASE_CENTAVOS',10000), litro = read('PIPA_LITRO_CENTAVOS',10), km = read('PIPA_KM_CENTAVOS',1500);

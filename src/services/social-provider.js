@@ -15,7 +15,7 @@ function createSocialProvider(env = process.env, fetcher = fetch) {
   const ready = provider => !!publicBase() && (provider === 'google' ? !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) :
     provider === 'apple' && !!(env.APPLE_CLIENT_ID && env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY));
   const config = provider => {
-    if (!ready(provider)) throw authError(503, 'Este proveedor aún no está configurado.');
+    if (!ready(provider)) throw authError(503, 'Este método de acceso no está disponible por ahora. Usa tu correo y contraseña.');
     return provider === 'google' ? { clientId: env.GOOGLE_CLIENT_ID, authorization: 'https://accounts.google.com/o/oauth2/v2/auth', token: 'https://oauth2.googleapis.com/token', issuer: ['https://accounts.google.com','accounts.google.com'], keys: 'https://www.googleapis.com/oauth2/v3/certs' } :
       { clientId: env.APPLE_CLIENT_ID, authorization: 'https://appleid.apple.com/auth/authorize', token: 'https://appleid.apple.com/auth/token', issuer: 'https://appleid.apple.com', keys: 'https://appleid.apple.com/auth/keys' };
   };

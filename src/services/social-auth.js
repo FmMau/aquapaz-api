@@ -22,7 +22,7 @@ function createSocialAuth({ pool, provider }) {
   return {
     async start(body) {
       if (!['google','apple'].includes(body?.provider) || !/^[A-Za-z0-9_-]{43}$/.test(body?.code_challenge || '')) throw authError(400,'Solicitud social inválida');
-      if (!provider.ready(body.provider)) throw authError(503,'Este proveedor aún no está configurado.');
+      if (!provider.ready(body.provider)) throw authError(503,'Este método de acceso no está disponible por ahora. Usa tu correo y contraseña.');
       const state = random(), nonce = random(), verifier = random();
       await pool.query('DELETE FROM auth_flows WHERE expires_at<=NOW()');
       await pool.query('DELETE FROM auth_tickets WHERE expires_at<=NOW()');
