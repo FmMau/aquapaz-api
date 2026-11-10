@@ -5,7 +5,7 @@ const tables = [
   'usuarios', 'reportes', 'confirmaciones', 'notificaciones',
   'operadores_pipa', 'pedidos_pipa',
   'auth_identities', 'auth_resets', 'auth_flows', 'auth_tickets', 'auth_limits',
-  'gestion_roles', 'reporte_atenciones', 'pipa_gestion_historial',
+  'gestion_roles', 'reporte_atenciones', 'pipa_gestion_historial', 'aquahome_devices',
 ];
 
 function schemaSql() {
@@ -13,7 +13,7 @@ function schemaSql() {
     '000_base_schema.sql', '001_sync_and_ownership.sql',
     '002_pipas.sql', '003_pipas_cotizaciones.sql', '004_pipas_ubicacion.sql',
     '005_pipas_notificaciones.sql', '006_auth.sql', '007_reportes_gestion.sql',
-    '008_pipas_gestion.sql',
+    '008_pipas_gestion.sql', '009_aquahome.sql',
   ].map(file =>
     fs.readFileSync(path.join(__dirname, '../migrations', file), 'utf8')
       .replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')
@@ -50,7 +50,7 @@ async function freshDatabase(client, { backup = saveBackup, sql = schemaSql() } 
     const file = await backup(snapshot);
     // No CASCADE: an unexpected external dependency aborts the transaction.
     await client.query(`
-      DROP TABLE IF EXISTS public.pipa_gestion_historial,
+      DROP TABLE IF EXISTS public.aquahome_devices, public.pipa_gestion_historial,
         public.reporte_atenciones, public.gestion_roles,
         public.auth_identities, public.auth_resets, public.auth_flows,
         public.auth_tickets, public.auth_limits, public.pedidos_pipa,

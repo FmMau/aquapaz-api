@@ -10,6 +10,7 @@ app.set('trust proxy', 1);
 app.use(express.json({ limit: '32kb' }));
 
 // Routes
+app.use('/api/aquahome', require('./routes/aquahome.routes').createRouter({ pool: require('./database/db'), auth: require('./middlewares/auth.middleware') }));
 const authRoutes = require('./routes/auth.routes');
 const notificacionesRoutes = require('./routes/notificaciones.routes');
 const reportesRoutes = require('./routes/reportes.routes');
