@@ -13,7 +13,7 @@ BEGIN
     ELSE 'que ya tiene agua' END;
   INSERT INTO notificaciones(usuario_id,reporte_id,evento,titulo,mensaje,tipo)
     SELECT u.id,NEW.id,'reporte_creado','Reporte en '||NEW.colonia,
-      'Un vecino reportó '||detalle||'. ¿En tu domicilio ocurre lo mismo?', 'reporte'
+      'Un vecino reportó '||detalle||' en tu colonia. ¿También te pasa?', 'reporte'
     FROM usuarios u WHERE u.colonia=NEW.colonia AND u.id<>NEW.usuario_id
     ON CONFLICT DO NOTHING;
   RETURN NEW;

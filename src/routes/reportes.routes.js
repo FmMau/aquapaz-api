@@ -10,7 +10,8 @@ const enviarPushAColonia = async (colonia, usuarioIdExcluir, titulo, mensaje, re
   try {
     const result = await pool.query(
       `SELECT id, email, colonia, push_token FROM usuarios
-       WHERE colonia = $1 AND id != $2 AND push_token IS NOT NULL`,
+       WHERE colonia = $1 AND id != $2 AND push_token IS NOT NULL
+         AND (reportes_silenciados_hasta IS NULL OR reportes_silenciados_hasta <= NOW())`,
       [colonia, usuarioIdExcluir]
     );
 
@@ -103,8 +104,8 @@ router.post('/', async (req, res) => {
       return res.json({ ...report, replayed: true });
     }
     const reporte = result.rows[0];
-    const texto = { no_agua: 'sin agua', baja_presion: 'con baja presión', tengo_agua: 'con agua normal' }[estado];
-    const push = await enviarPushAColonia(req.user.colonia, req.user.id, 'Reporte en ' + req.user.colonia, 'Un vecino reporta ' + texto + '. ¿Confirmas?', reporte.id);
+    const texto = tipo === 'fuga' ? 'una fuga de agua' : { no_agua: 'falta de agua', baja_presion: 'baja presión', tengo_agua: 'que ya tiene agua' }[estado];
+    const push = await enviarPushAColonia(req.user.colonia, req.user.id, 'Reporte en ' + req.user.colonia, 'Un vecino reportó ' + texto + ' en tu colonia. ¿También te pasa?', reporte.id);
     res.status(201).json({ ...reporte, push });
   } catch (error) { fail(res, error); }
 });

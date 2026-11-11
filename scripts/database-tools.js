@@ -15,7 +15,7 @@ function schemaSql() {
     '002_pipas.sql', '003_pipas_cotizaciones.sql', '004_pipas_ubicacion.sql',
     '005_pipas_notificaciones.sql', '006_auth.sql', '007_reportes_gestion.sql',
     '008_pipas_gestion.sql', '009_aquahome.sql', '010_pipas_mercado.sql',
-    '011_web_push.sql', '012_reportes_web_push.sql',
+    '011_web_push.sql', '012_reportes_web_push.sql', '013_reportes_pausa_diaria.sql',
   ].map(file =>
     fs.readFileSync(path.join(__dirname, '../migrations', file), 'utf8')
       .replace(/^\s*(BEGIN|COMMIT);\s*$/gm, '')
