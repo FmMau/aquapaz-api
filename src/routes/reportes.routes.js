@@ -47,9 +47,41 @@ const enviarPushAColonia = async (colonia, usuarioIdExcluir, titulo, mensaje, re
 
 
 router.get('/', async (req, res) => {
+  const query = req.query || {};
+  const limit = query.limit === undefined ? 50 : Number(query.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) return res.status(400).json({ error: 'limit debe ser de 1 a 100' });
+  let cursor;
+  if (query.cursor !== undefined) {
+    try {
+      if (typeof query.cursor !== 'string' || query.cursor.length > 256) throw new Error();
+      cursor = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'));
+      if (!Array.isArray(cursor) || cursor.length !== 2 || !(cursor[0] === null || (typeof cursor[0] === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?$/.test(cursor[0]) && Number.isFinite(Date.parse(cursor[0])))) || !validId(cursor[1])) throw new Error();
+    } catch { return res.status(400).json({ error: 'Cursor inválido' }); }
+  }
   try {
-    const result = await pool.query('SELECT * FROM reportes WHERE colonia = $1 ORDER BY fecha DESC', [req.user.colonia]);
-    res.json(result.rows);
+    const args = [req.user.colonia, limit + 1];
+    if (cursor) args.push(...(cursor[0] === null ? [cursor[1]] : cursor));
+    const result = await pool.query(`SELECT *, to_char(fecha,'YYYY-MM-DD"T"HH24:MI:SS.US') AS cursor_fecha
+      FROM reportes WHERE colonia = $1 ${cursor ? cursor[0] === null ? 'AND fecha IS NULL AND id<$3::integer' : 'AND ((fecha,id)<($3::timestamp,$4::integer) OR fecha IS NULL)' : ''}
+      ORDER BY fecha DESC NULLS LAST,id DESC LIMIT $2`, args);
+    const hasMore = result.rows.length > limit;
+    const page = result.rows.slice(0, limit);
+    const last = page.at(-1);
+    const nextCursor = hasMore ? Buffer.from(JSON.stringify([last.cursor_fecha, last.id])).toString('base64url') : null;
+    const items = page.map(({ cursor_fecha, ...row }) => row);
+    if (query.limit === undefined && query.cursor === undefined) return res.json(items);
+    res.json({ items, next_cursor: nextCursor, has_more: hasMore });
+  } catch (error) { fail(res, error); }
+});
+
+router.get('/resumen', async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE estado='no_agua')::int AS no_agua,
+      COUNT(*) FILTER (WHERE estado='baja_presion')::int AS baja_presion,
+      COUNT(*) FILTER (WHERE estado='tengo_agua')::int AS tengo_agua
+      FROM reportes WHERE colonia=$1`, [req.user.colonia]);
+    res.json(result.rows[0]);
   } catch (error) { fail(res, error); }
 });
 
@@ -83,6 +115,15 @@ router.get('/colonia/:colonia', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM reportes WHERE colonia = $1 AND tipo = 'agua' AND estado = 'no_agua' ORDER BY fecha DESC LIMIT 20", [req.user.colonia]);
     res.json(result.rows);
+  } catch (error) { fail(res, error); }
+});
+
+router.get('/:id', async (req, res) => {
+  if (!validId(req.params.id)) return res.status(400).json({ error: 'ID inválido' });
+  try {
+    const result = await pool.query('SELECT * FROM reportes WHERE id=$1 AND colonia=$2', [req.params.id, req.user.colonia]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Reporte no encontrado' });
+    res.json(result.rows[0]);
   } catch (error) { fail(res, error); }
 });
 

@@ -30,6 +30,14 @@ Para probar autenticación, lectura y guardado por HTTP contra PostgreSQL, confi
 
 ## Verification
 
+### Reportes paginados
+
+`GET /api/reportes?limit=50` devuelve `{ items, next_cursor, has_more }`. El máximo es 100. Envía `cursor` en la siguiente consulta, conservando `limit`. El cursor usa fecha e ID para no duplicar registros con la misma fecha. El acceso sigue limitado a la colonia del usuario autenticado.
+
+Sin parámetros, los clientes anteriores siguen recibiendo un array, ahora limitado a 50 reportes recientes. `GET /api/reportes/:id` consulta un reporte concreto de la colonia sin recorrer las páginas. `GET /api/reportes/resumen` devuelve los totales completos (`total`, `no_agua`, `baja_presion`, `tengo_agua`) sin descargar el historial.
+
+La migración `014_reportes_bandeja_indices.sql` añade los índices de colonia/fecha e inbox por destinatario/ID. `npm run test:volume -- --users 1000 --reports 10000 --requests 1000 --concurrency 25` reproduce la prueba local aislada; no se conecta a Railway ni envía notificaciones reales.
+
 Run `npm test`. Route tests use injected database/JWT adapters and do not contact production. Real PostgreSQL migration, concurrent database operations and remote push delivery still require integration testing in staging.
 
 Push is best effort after report persistence. A crash between saving and sending can leave a report without a push; retrying the report does not resend it. Guaranteed delivery requires a transactional outbox in a later change.

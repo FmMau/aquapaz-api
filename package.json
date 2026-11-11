@@ -13,6 +13,7 @@
     "dev": "nodemon src/app.js",
     "migrate": "node scripts/migrate.js",
     "test": "node --test",
+    "test:volume": "node scripts/benchmark-volume.cjs",
     "test:gestion": "node scripts/check-gestion.js",
     "auth:check": "node scripts/check-auth-config.js",
     "migrate:fresh": "node scripts/migrate-fresh.js",
