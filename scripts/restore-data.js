@@ -15,6 +15,7 @@ const { tables } = require('./database-tools');
       'auth_identities', 'auth_resets', 'auth_flows', 'auth_tickets', 'auth_limits',
       'gestion_roles', 'reporte_atenciones', 'pipa_gestion_historial', 'aquahome_devices',
       'pipa_cotizaciones', 'pipa_ofertas',
+      'push_subscriptions', 'web_push_deliveries',
     ]) {
       if (snapshot.tables && snapshot.tables[table] === undefined) snapshot.tables[table] = [];
     }
@@ -29,7 +30,8 @@ const { tables } = require('./database-tools');
       LOCK TABLE usuarios, reportes, confirmaciones, notificaciones,
         operadores_pipa, pedidos_pipa, auth_identities, auth_resets,
         auth_flows, auth_tickets, auth_limits, gestion_roles,
-        reporte_atenciones, pipa_gestion_historial, aquahome_devices, pipa_cotizaciones, pipa_ofertas
+        reporte_atenciones, pipa_gestion_historial, aquahome_devices, pipa_cotizaciones, pipa_ofertas,
+        push_subscriptions, web_push_deliveries
       IN ACCESS EXCLUSIVE MODE
     `);
     for (const table of tables) {
