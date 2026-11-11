@@ -17,7 +17,7 @@ function createWebPushWorker({ pool, env = process.env, sender, logger = console
       ), claimed AS (
         UPDATE web_push_deliveries d SET state='sending',attempts=attempts+1,next_at=NOW()+INTERVAL '5 minutes'
         FROM ready WHERE d.id=ready.id RETURNING d.*
-      ) SELECT d.*,s.endpoint,s.p256dh,s.auth,n.titulo,n.mensaje,n.evento,
+      ) SELECT d.*,s.endpoint,s.p256dh,s.auth,n.titulo,n.mensaje,n.evento,n.reporte_id,
         EXTRACT(EPOCH FROM (d.expires_at-NOW())) AS ttl,
         CASE WHEN n.evento LIKE 'oferta:%' THEN EXISTS (
           SELECT 1 FROM pipa_ofertas f JOIN operadores_pipa o ON o.id=f.operador_id
@@ -32,7 +32,7 @@ function createWebPushWorker({ pool, env = process.env, sender, logger = console
         try {
           if (Number(row.ttl) <= 0 || !row.live) state = 'expired';
           else await sender.sendNotification({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
-            JSON.stringify({ title: row.titulo || 'AquaPaz', body: row.mensaje, url: '#/notificaciones', tag: `aquapaz-${row.notification_id}` }),
+            JSON.stringify({ title: row.titulo || 'AquaPaz', body: row.mensaje, url: row.reporte_id ? `#/notificaciones?reporte=${row.reporte_id}` : '#/notificaciones', tag: `aquapaz-${row.notification_id}` }),
             { TTL: Math.max(1, Math.floor(Number(row.ttl))), timeout: 10000 });
         } catch (error) {
           if ([404,410].includes(error.statusCode)) {

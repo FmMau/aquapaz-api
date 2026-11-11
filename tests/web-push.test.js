@@ -37,7 +37,7 @@ test('persistent subscriptions, ownership, event queue, expiry, retry and dead e
   try {
     await db.exec(`CREATE TABLE usuarios(id SERIAL PRIMARY KEY);
       INSERT INTO usuarios VALUES(1),(2);
-      CREATE TABLE notificaciones(id SERIAL PRIMARY KEY,usuario_id INTEGER,titulo TEXT,mensaje TEXT,evento TEXT,pedido_id INTEGER);
+      CREATE TABLE notificaciones(id SERIAL PRIMARY KEY,usuario_id INTEGER,titulo TEXT,mensaje TEXT,evento TEXT,pedido_id INTEGER,reporte_id INTEGER);
       CREATE TABLE operadores_pipa(id INTEGER,usuario_id INTEGER);
       CREATE TABLE pedidos_pipa(id INTEGER,estado TEXT);
       CREATE TABLE pipa_ofertas(id INTEGER,pedido_id INTEGER,operador_id INTEGER,estado TEXT,vence_en TIMESTAMPTZ);`);
